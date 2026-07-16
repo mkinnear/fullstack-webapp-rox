@@ -1,7 +1,7 @@
 const API_BASE = window.location.hostname === "localhost"
   ? "http://localhost:8000/api"
   : "https://fullstack-backend.onrender.com/api";
-  
+
 const list = document.getElementById("item-list");
 const form = document.getElementById("item-form");
 const input = document.getElementById("item-name");
@@ -29,3 +29,4 @@ form.addEventListener("submit", async (e) => {
 });
 
 loadItems();
+
