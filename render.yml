@@ -27,7 +27,7 @@ services:
           name: fullstack-db
           property: password
       - key: FRONTEND_URL
-        value: https://fullstack-frontend.onrender.com
+        value: https://fullstack-frontend-8tuc.onrender.com
 
   - type: web
     name: fullstack-frontend
@@ -39,4 +39,3 @@ databases:
     plan: free
     databaseName: appdb
     user: appuser
-    
