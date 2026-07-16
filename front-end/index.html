@@ -1,19 +1,88 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>Full Stack Demo</title>
-  <link rel="stylesheet" href="style.css">
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Kokoro Karate — Train with intent</title>
+<link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <main>
-    <h1>Items</h1>
-    <form id="item-form">
-      <input type="text" id="item-name" placeholder="New item name" required>
-      <button type="submit">Add</button>
-    </form>
-    <ul id="item-list"></ul>
-  </main>
-  <script src="app.js"></script>
+
+<!-- NAV -->
+<header class="site-header">
+  <div class="wrap header-inner">
+    <div class="logo" id="nav-home">
+      <span class="logo-dot"></span>KOKORO KARATE
+    </div>
+    <nav class="nav-links">
+      <button class="link-btn" id="nav-library">Library</button>
+      <button class="link-btn" id="nav-membership">Membership</button>
+      <span id="tier-badge" class="tier-badge hidden"></span>
+      <button class="link-btn" id="nav-signin">Sign in</button>
+      <button class="btn btn-primary" id="nav-join">Join now</button>
+    </nav>
+  </div>
+</header>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="hero-strike"></div>
+  <div class="wrap hero-inner">
+    <p class="eyebrow">Est. 1987 &nbsp;·&nbsp; Full-Contact Karate</p>
+    <h1 class="disp hero-title">TRAIN WITH<br />INTENT.</h1>
+    <p class="hero-sub">Structured karate instruction from white belt to black — kihon, kata, kumite and conditioning, taught the way a real dojo teaches: in order, with correction, and without shortcuts.</p>
+    <div class="hero-actions">
+      <button class="btn btn-light" id="hero-watch"><span class="play-ico"></span>Watch a class</button>
+      <button class="btn btn-outline" id="hero-membership">View membership</button>
+    </div>
+  </div>
+</section>
+
+<!-- BELT LEGEND -->
+<section class="belt-strip">
+  <div class="wrap belt-strip-inner" id="belt-strip">
+    <span class="belt-strip-label">The path</span>
+  </div>
+</section>
+
+<!-- LIBRARY -->
+<section class="wrap section" id="library">
+  <div class="section-head">
+    <div>
+      <p class="eyebrow">Video library</p>
+      <h2 class="disp section-title">EVERY LESSON, BY RANK.</h2>
+    </div>
+    <p class="section-note">Filter by belt to see what's next on your path, or by technique type to drill a specific skill. Lessons are numbered in the order your dojo teaches them.</p>
+  </div>
+
+  <div class="filter-row" id="belt-filters"></div>
+  <div class="filter-row" id="type-filters"></div>
+
+  <div class="video-grid" id="video-grid"></div>
+  <p class="empty-note hidden" id="empty-note">No videos match this combination yet. Try a different rank or type.</p>
+</section>
+
+<!-- MEMBERSHIP -->
+<section class="section-alt" id="membership">
+  <div class="wrap section">
+    <div class="section-head center">
+      <p class="eyebrow">Membership</p>
+      <h2 class="disp section-title">PICK YOUR RANK.</h2>
+    </div>
+    <div class="tier-grid" id="tier-grid"></div>
+  </div>
+</section>
+
+<footer class="site-footer">
+  <div class="wrap footer-inner">
+    <div class="logo small"><span class="logo-dot"></span>KOKORO KARATE</div>
+    <p class="footer-note">White belt to black. No shortcuts.</p>
+  </div>
+</footer>
+
+<!-- MODAL ROOT -->
+<div id="modal-root"></div>
+
+<script src="app.js"></script>
 </body>
 </html>
