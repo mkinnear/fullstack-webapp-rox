@@ -1,0 +1,41 @@
+services:
+  - type: web
+    name: fullstack-backend
+    runtime: docker
+    dockerfilePath: ./back-end/Dockerfile
+    dockerContext: ./back-end
+    plan: free
+    envVars:
+      - key: DB_HOST
+        fromDatabase:
+          name: fullstack-db
+          property: host
+      - key: DB_PORT
+        fromDatabase:
+          name: fullstack-db
+          property: port
+      - key: DB_NAME
+        fromDatabase:
+          name: fullstack-db
+          property: database
+      - key: DB_USER
+        fromDatabase:
+          name: fullstack-db
+          property: user
+      - key: DB_PASSWORD
+        fromDatabase:
+          name: fullstack-db
+          property: password
+      - key: FRONTEND_URL
+        value: https://fullstack-frontend.onrender.com
+
+  - type: web
+    name: fullstack-frontend
+    runtime: static
+    staticPublishPath: ./front-end
+
+databases:
+  - name: fullstack-db
+    plan: free
+    databaseName: appdb
+    user: appuser
