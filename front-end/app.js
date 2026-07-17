@@ -555,6 +555,36 @@ function wireNav() {
   document.getElementById("hero-membership").addEventListener("click", () => scrollToId("membership"));
   document.getElementById("nav-join").addEventListener("click", () => scrollToId("membership"));
   document.getElementById("nav-signin").addEventListener("click", () => openAuthModal("signin"));
+
+  const menuToggle = document.getElementById("menu-toggle");
+  const navLinks = document.getElementById("nav-links");
+
+  function setMenuOpen(open) {
+    navLinks.classList.toggle("open", open);
+    menuToggle.classList.toggle("active", open);
+    menuToggle.setAttribute("aria-expanded", String(open));
+  }
+
+  menuToggle.addEventListener("click", () => setMenuOpen(!navLinks.classList.contains("open")));
+
+  // Close the mobile menu after tapping any nav action inside it.
+  navLinks.addEventListener("click", (e) => {
+    if (e.target.closest("button")) setMenuOpen(false);
+  });
+
+  document.addEventListener("click", (e) => {
+    if (navLinks.classList.contains("open") && !navLinks.contains(e.target) && !menuToggle.contains(e.target)) {
+      setMenuOpen(false);
+    }
+  });
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") setMenuOpen(false);
+  });
+
+  window.addEventListener("resize", () => {
+    if (window.innerWidth > 860) setMenuOpen(false);
+  });
 }
 
 document.addEventListener("DOMContentLoaded", init);
