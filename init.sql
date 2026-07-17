@@ -1,22 +1,46 @@
--- Kokoro Karate schema
--- Belt colors/names are presentation-only and live in the frontend; only the
--- belt slug (white/yellow/orange/green/blue/purple/brown/black) is stored here.
+-- Kokoro Karate schema v2
+-- Adds: hashed sessions, admin role + email verification, OTP codes,
+-- rate limiting, CMS content blocks, video captions/URLs, Stripe fields.
 
 CREATE TABLE IF NOT EXISTS users (
     id SERIAL PRIMARY KEY,
     name TEXT NOT NULL,
     email TEXT UNIQUE NOT NULL,
     password_hash TEXT NOT NULL,
+    is_admin BOOLEAN NOT NULL DEFAULT FALSE,
+    email_verified BOOLEAN NOT NULL DEFAULT FALSE,
     subscription_tier TEXT,
     subscribed_at TIMESTAMP,
+    stripe_customer_id TEXT,
+    failed_login_attempts INT NOT NULL DEFAULT 0,
+    locked_until TIMESTAMP,
     created_at TIMESTAMP DEFAULT NOW()
 );
 
+-- Sessions store a SHA-256 hash of the token, never the raw token.
 CREATE TABLE IF NOT EXISTS sessions (
-    token TEXT PRIMARY KEY,
+    token_hash TEXT PRIMARY KEY,
     user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     created_at TIMESTAMP DEFAULT NOW(),
     expires_at TIMESTAMP NOT NULL
+);
+
+-- One-time codes for email verification and password reset.
+CREATE TABLE IF NOT EXISTS otp_codes (
+    id SERIAL PRIMARY KEY,
+    user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    code_hash TEXT NOT NULL,
+    purpose TEXT NOT NULL, -- 'verify_email' | 'password_reset'
+    expires_at TIMESTAMP NOT NULL,
+    consumed_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Coarse rate limiting for auth endpoints (login/signup/forgot-password).
+CREATE TABLE IF NOT EXISTS rate_limit_attempts (
+    id SERIAL PRIMARY KEY,
+    identifier TEXT NOT NULL, -- e.g. "login:email:ip"
+    created_at TIMESTAMP DEFAULT NOW()
 );
 
 CREATE TABLE IF NOT EXISTS tiers (
@@ -27,7 +51,8 @@ CREATE TABLE IF NOT EXISTS tiers (
     belt_slug TEXT NOT NULL,
     tagline TEXT NOT NULL,
     featured BOOLEAN NOT NULL DEFAULT FALSE,
-    sort_order INT NOT NULL DEFAULT 0
+    sort_order INT NOT NULL DEFAULT 0,
+    stripe_price_id TEXT -- set once the tier is created in the Stripe dashboard
 );
 
 CREATE TABLE IF NOT EXISTS tier_features (
@@ -43,10 +68,32 @@ CREATE TABLE IF NOT EXISTS videos (
     lesson_number INT NOT NULL,
     type TEXT NOT NULL,
     title TEXT NOT NULL,
+    caption TEXT NOT NULL DEFAULT '',
+    video_url TEXT NOT NULL DEFAULT '',
     duration TEXT NOT NULL,
     instructor TEXT NOT NULL,
     premium BOOLEAN NOT NULL DEFAULT TRUE,
     sort_order INT NOT NULL DEFAULT 0
+);
+
+-- Admin-editable text sections shown on the public site. Always rendered
+-- as plain text on the frontend (never innerHTML) to rule out stored XSS.
+CREATE TABLE IF NOT EXISTS content_blocks (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Records of completed Stripe payments, for audit/reconciliation.
+CREATE TABLE IF NOT EXISTS payments (
+    id SERIAL PRIMARY KEY,
+    user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    tier_slug TEXT NOT NULL,
+    stripe_session_id TEXT UNIQUE,
+    stripe_payment_intent TEXT,
+    amount_cents INT NOT NULL,
+    status TEXT NOT NULL, -- 'completed' | 'refunded'
+    created_at TIMESTAMP DEFAULT NOW()
 );
 
 -- Tiers
@@ -69,21 +116,31 @@ INSERT INTO tier_features (tier_slug, feature, sort_order) VALUES
     ('annual', 'Early access to new kata drops', 3),
     ('annual', 'Best value', 4);
 
--- Videos (lesson_number is scoped per belt, in curriculum order)
-INSERT INTO videos (belt_slug, lesson_number, type, title, duration, instructor, premium, sort_order) VALUES
-    ('white', 1, 'Kihon', 'Zenkutsu-dachi: The Front Stance', '8:12', 'Sensei Rina Aoki', FALSE, 1),
-    ('white', 2, 'Kihon', 'Age-uke Rising Block Fundamentals', '6:40', 'Sensei Kenji Ohta', FALSE, 2),
-    ('white', 3, 'Kata', 'Heian Shodan, Step by Step', '14:05', 'Sensei Rina Aoki', FALSE, 3),
-    ('yellow', 1, 'Kumite', 'Reading Distance in Kumite', '11:30', 'Sensei Marcus Diallo', TRUE, 4),
-    ('yellow', 2, 'Kata', 'Heian Nidan, Full Breakdown', '16:20', 'Sensei Rina Aoki', TRUE, 5),
-    ('orange', 1, 'Kihon', 'Hip Rotation for Real Power', '9:55', 'Sensei Kenji Ohta', TRUE, 6),
-    ('orange', 2, 'Bunkai', 'Heian Sandan Application (Bunkai)', '13:10', 'Sensei Marcus Diallo', TRUE, 7),
-    ('green', 1, 'Conditioning', 'Conditioning: Striking Power Circuit', '22:00', 'Coach Leila Nasser', TRUE, 8),
-    ('green', 2, 'Kata', 'Heian Yondan, Full Breakdown', '17:45', 'Sensei Rina Aoki', TRUE, 9),
-    ('blue', 1, 'Kumite', 'Counter-Fighting Fundamentals', '19:15', 'Sensei Marcus Diallo', TRUE, 10),
-    ('blue', 2, 'Bunkai', 'Heian Godan Application (Bunkai)', '15:40', 'Sensei Kenji Ohta', TRUE, 11),
-    ('purple', 1, 'Kata', 'Tekki Shodan, Full Breakdown', '18:30', 'Sensei Rina Aoki', TRUE, 12),
-    ('purple', 2, 'Conditioning', 'Explosive Footwork Drills', '20:10', 'Coach Leila Nasser', TRUE, 13),
-    ('brown', 1, 'Kata', 'Bassai Dai, Full Breakdown', '21:00', 'Sensei Rina Aoki', TRUE, 14),
-    ('brown', 2, 'Kumite', 'Pre-Grading Sparring Strategy', '24:35', 'Sensei Marcus Diallo', TRUE, 15),
-    ('black', 1, 'Kihon', 'Black Belt Mindset: The Long Game', '12:50', 'Sensei Kenji Ohta', TRUE, 16);
+INSERT INTO videos (belt_slug, lesson_number, type, title, caption, duration, instructor, premium, sort_order) VALUES
+    ('white', 1, 'Kihon', 'Zenkutsu-dachi: The Front Stance', 'The foundation stance for almost every technique that follows.', '8:12', 'Sensei Rina Aoki', FALSE, 1),
+    ('white', 2, 'Kihon', 'Age-uke Rising Block Fundamentals', 'Defending the head against a rising strike.', '6:40', 'Sensei Kenji Ohta', FALSE, 2),
+    ('white', 3, 'Kata', 'Heian Shodan, Step by Step', 'Your first kata, broken down move by move.', '14:05', 'Sensei Rina Aoki', FALSE, 3),
+    ('yellow', 1, 'Kumite', 'Reading Distance in Kumite', 'Judging range before you ever throw a strike.', '11:30', 'Sensei Marcus Diallo', TRUE, 4),
+    ('yellow', 2, 'Kata', 'Heian Nidan, Full Breakdown', 'The second Heian kata, with bunkai notes.', '16:20', 'Sensei Rina Aoki', TRUE, 5),
+    ('orange', 1, 'Kihon', 'Hip Rotation for Real Power', 'Where strike power actually comes from.', '9:55', 'Sensei Kenji Ohta', TRUE, 6),
+    ('orange', 2, 'Bunkai', 'Heian Sandan Application (Bunkai)', 'What those kata movements mean against a real attacker.', '13:10', 'Sensei Marcus Diallo', TRUE, 7),
+    ('green', 1, 'Conditioning', 'Conditioning: Striking Power Circuit', 'Build the specific strength karate striking demands.', '22:00', 'Coach Leila Nasser', TRUE, 8),
+    ('green', 2, 'Kata', 'Heian Yondan, Full Breakdown', 'The fourth Heian kata, full breakdown.', '17:45', 'Sensei Rina Aoki', TRUE, 9),
+    ('blue', 1, 'Kumite', 'Counter-Fighting Fundamentals', 'Turning defense into scoring opportunity.', '19:15', 'Sensei Marcus Diallo', TRUE, 10),
+    ('blue', 2, 'Bunkai', 'Heian Godan Application (Bunkai)', 'Application drills for the fifth Heian kata.', '15:40', 'Sensei Kenji Ohta', TRUE, 11),
+    ('purple', 1, 'Kata', 'Tekki Shodan, Full Breakdown', 'A close-stance kata built for power over mobility.', '18:30', 'Sensei Rina Aoki', TRUE, 12),
+    ('purple', 2, 'Conditioning', 'Explosive Footwork Drills', 'Speed and reaction work for advanced sparring.', '20:10', 'Coach Leila Nasser', TRUE, 13),
+    ('brown', 1, 'Kata', 'Bassai Dai, Full Breakdown', 'One of the most demanding kata before black belt.', '21:00', 'Sensei Rina Aoki', TRUE, 14),
+    ('brown', 2, 'Kumite', 'Pre-Grading Sparring Strategy', 'Preparing your sparring for a black belt grading panel.', '24:35', 'Sensei Marcus Diallo', TRUE, 15),
+    ('black', 1, 'Kihon', 'Black Belt Mindset: The Long Game', 'Black belt is the beginning, not the end.', '12:50', 'Sensei Kenji Ohta', TRUE, 16);
+
+INSERT INTO content_blocks (key, value) VALUES
+    ('hero_eyebrow', 'Est. 1987 · Full-Contact Karate'),
+    ('hero_title_line1', 'TRAIN WITH'),
+    ('hero_title_line2', 'INTENT.'),
+    ('hero_subtitle', 'Structured karate instruction from white belt to black — kihon, kata, kumite and conditioning, taught the way a real dojo teaches: in order, with correction, and without shortcuts.'),
+    ('library_title', 'EVERY LESSON, BY RANK.'),
+    ('library_note', 'Filter by belt to see what''s next on your path, or by technique type to drill a specific skill. Lessons are numbered in the order your dojo teaches them.'),
+    ('membership_title', 'PICK YOUR RANK.'),
+    ('footer_note', 'White belt to black. No shortcuts.')
+ON CONFLICT (key) DO NOTHING;

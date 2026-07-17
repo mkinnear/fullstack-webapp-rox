@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Kokoro Karate — Admin</title>
+<link rel="stylesheet" href="style.css" />
+<link rel="stylesheet" href="admin.css" />
+</head>
+<body>
+
+<header class="site-header">
+  <div class="wrap header-inner">
+    <div class="logo"><span class="logo-dot"></span>KOKORO KARATE <span style="color:var(--muted);font-size:14px;margin-left:8px;">/ admin</span></div>
+    <nav class="nav-links">
+      <a class="link-btn" href="index.html">View site</a>
+      <button class="link-btn hidden" id="admin-logout">Log out</button>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap admin-main">
+
+  <!-- LOGIN GATE -->
+  <section id="admin-login-gate" class="admin-panel">
+    <h2 class="disp" style="font-size:28px;margin:0 0 6px;">ADMIN SIGN IN</h2>
+    <p style="color:var(--muted);font-size:14px;margin-bottom:22px;">Sign in with an account that has admin access.</p>
+    <form id="admin-login-form" class="admin-form-narrow">
+      <label class="field">
+        <span class="field-label">Email</span>
+        <input class="field-input" id="admin-email" type="email" required />
+      </label>
+      <label class="field">
+        <span class="field-label">Password</span>
+        <input class="field-input" id="admin-password" type="password" required />
+      </label>
+      <p class="field-error hidden" id="admin-login-error"></p>
+      <button type="submit" class="btn btn-primary btn-block">Sign in</button>
+    </form>
+  </section>
+
+  <!-- ADMIN DASHBOARD (hidden until authenticated as admin) -->
+  <div id="admin-dashboard" class="hidden">
+
+    <section class="admin-panel">
+      <h2 class="disp" style="font-size:26px;margin:0 0 4px;">SITE TEXT</h2>
+      <p style="color:var(--muted);font-size:14px;margin-bottom:20px;">
+        Edits appear on the live site immediately. Stored and rendered as plain text — no HTML formatting.
+      </p>
+      <div id="content-list"></div>
+    </section>
+
+    <section class="admin-panel">
+      <h2 class="disp" style="font-size:26px;margin:0 0 4px;">ADD A VIDEO</h2>
+      <form id="add-video-form" class="admin-video-form">
+        <label class="field"><span class="field-label">Title</span><input class="field-input" id="nv-title" required /></label>
+        <label class="field"><span class="field-label">Belt</span>
+          <select class="field-input" id="nv-belt">
+            <option value="white">White</option><option value="yellow">Yellow</option><option value="orange">Orange</option>
+            <option value="green">Green</option><option value="blue">Blue</option><option value="purple">Purple</option>
+            <option value="brown">Brown</option><option value="black">Black</option>
+          </select>
+        </label>
+        <label class="field"><span class="field-label">Lesson #</span><input class="field-input" id="nv-lesson" type="number" min="1" value="1" /></label>
+        <label class="field"><span class="field-label">Type</span>
+          <select class="field-input" id="nv-type">
+            <option>Kihon</option><option>Kata</option><option>Kumite</option><option>Bunkai</option><option>Conditioning</option>
+          </select>
+        </label>
+        <label class="field"><span class="field-label">Duration</span><input class="field-input" id="nv-duration" placeholder="8:12" /></label>
+        <label class="field"><span class="field-label">Instructor</span><input class="field-input" id="nv-instructor" /></label>
+        <label class="field admin-field-wide"><span class="field-label">Caption</span><input class="field-input" id="nv-caption" /></label>
+        <label class="field admin-field-wide"><span class="field-label">Video URL (YouTube/Vimeo/hosted link)</span><input class="field-input" id="nv-url" placeholder="https://..." /></label>
+        <label class="field-checkbox"><input type="checkbox" id="nv-premium" checked /> Premium (members only)</label>
+        <button type="submit" class="btn btn-primary">Add video</button>
+      </form>
+    </section>
+
+    <section class="admin-panel">
+      <h2 class="disp" style="font-size:26px;margin:0 0 4px;">VIDEO LIBRARY</h2>
+      <p style="color:var(--muted);font-size:14px;margin-bottom:20px;">Edit any field then press Save on that row. Delete removes it immediately.</p>
+      <div id="video-list"></div>
+    </section>
+
+  </div>
+</main>
+
+<script src="admin.js"></script>
+</body>
+</html>

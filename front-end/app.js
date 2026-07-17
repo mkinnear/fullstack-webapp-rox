@@ -30,12 +30,12 @@ const state = {
   currentUser: null,
   beltFilter: "all",
   typeFilter: "all",
-  authMode: null,       // null | "signin" | "signup"
+  authMode: null,        // null | "signin" | "signup" | "verify" | "forgot" | "reset"
   authError: "",
+  authNotice: "",
   authBusy: false,
-  pendingTier: null,     // tier the user tried to buy before being signed in
-  checkoutTier: null,
-  checkoutStep: "form",  // form | processing | success
+  pendingTier: null,      // tier the user tried to buy before being signed in
+  resetEmail: "",         // carried from "forgot" step into "reset" step
 };
 
 /* ---------------- API HELPERS ---------------- */
@@ -63,17 +63,20 @@ async function init() {
   renderBeltStrip();
   renderFilters();
   wireNav();
+  handleCheckoutRedirect();
 
   const grid = document.getElementById("video-grid");
   grid.innerHTML = `<p class="loading-note">Loading the library…</p>`;
 
   try {
-    const [videos, tiers] = await Promise.all([
+    const [videos, tiers, content] = await Promise.all([
       api("/videos"),
       api("/tiers"),
+      api("/content").catch(() => ({})), // CMS text is optional -- fall back to the HTML defaults
     ]);
     state.videos = videos;
     state.tiers = tiers;
+    applyContent(content);
   } catch (err) {
     grid.innerHTML = `<p class="loading-note">Couldn't reach the server. Is the backend running?</p>`;
     console.error(err);
@@ -94,6 +97,34 @@ async function init() {
   updateNavAuthState();
   renderTierGrid();
   renderVideoGrid();
+}
+
+function applyContent(map) {
+  document.querySelectorAll("[data-content-key]").forEach((el) => {
+    const key = el.getAttribute("data-content-key");
+    if (map[key]) el.textContent = map[key]; // textContent only -- never innerHTML from server data
+  });
+}
+
+function handleCheckoutRedirect() {
+  const params = new URLSearchParams(window.location.search);
+  const status = params.get("checkout");
+  if (!status) return;
+  window.history.replaceState({}, "", window.location.pathname);
+  if (status === "success") {
+    showToast("Payment received — welcome to Black Belt membership.");
+  } else if (status === "cancelled") {
+    showToast("Checkout was cancelled. No charge was made.");
+  }
+}
+
+function showToast(message) {
+  const el = document.createElement("div");
+  el.className = "toast";
+  el.textContent = message;
+  document.body.appendChild(el);
+  setTimeout(() => el.classList.add("show"), 10);
+  setTimeout(() => { el.classList.remove("show"); setTimeout(() => el.remove(), 300); }, 5000);
 }
 
 /* ---------------- RENDER: STATIC SECTIONS ---------------- */
@@ -260,9 +291,8 @@ function closeModal() {
   modalRoot.innerHTML = "";
   state.authMode = null;
   state.authError = "";
+  state.authNotice = "";
   state.authBusy = false;
-  state.checkoutTier = null;
-  state.checkoutStep = "form";
 }
 
 function openOverlay(bodyHTML, onMount) {
@@ -302,55 +332,57 @@ function openVideoModal(video) {
         scrollToId("membership");
       });
     });
-  } else {
-    openOverlay(`
-      <div>
-        <div class="video-thumb" style="height:260px;background:linear-gradient(135deg, ${belt.hex} 0%, #121212 140%);">
-          <div class="video-play-circle" style="width:68px;height:68px;">${playIconHTML()}</div>
-        </div>
-        <div class="modal-body">
-          <span class="video-type">${escapeHTML(video.type)} · ${belt.name} belt · Lesson ${String(video.lesson).padStart(2, "0")}</span>
-          <h3 style="font-size:22px;margin:8px 0 6px;">${escapeHTML(video.title)}</h3>
-          <p style="color:var(--muted);font-size:14px;">${escapeHTML(video.instructor)} · ${escapeHTML(video.duration)}</p>
-        </div>
+    return;
+  }
+
+  const playerHTML = video.videoUrl
+    ? `<div class="video-embed">${embedForUrl(video.videoUrl)}</div>`
+    : `<div class="video-thumb" style="height:260px;background:linear-gradient(135deg, ${belt.hex} 0%, #121212 140%);">
+         <div class="video-play-circle" style="width:68px;height:68px;">${playIconHTML()}</div>
+       </div>`;
+
+  openOverlay(`
+    <div>
+      ${playerHTML}
+      <div class="modal-body">
+        <span class="video-type">${escapeHTML(video.type)} · ${belt.name} belt · Lesson ${String(video.lesson).padStart(2, "0")}</span>
+        <h3 style="font-size:22px;margin:8px 0 6px;">${escapeHTML(video.title)}</h3>
+        <p style="color:var(--muted);font-size:14px;margin-bottom:10px;">${escapeHTML(video.instructor)} · ${escapeHTML(video.duration)}</p>
+        ${video.caption ? `<p style="font-size:14px;color:#D4D1C6;">${escapeHTML(video.caption)}</p>` : ""}
       </div>
-    `);
+    </div>
+  `);
+}
+
+/** Turns a plain YouTube/Vimeo URL into an embeddable iframe. Falls back to a plain link for anything else. */
+function embedForUrl(url) {
+  try {
+    const u = new URL(url);
+    let embedSrc = null;
+    if (u.hostname.includes("youtube.com") && u.searchParams.get("v")) {
+      embedSrc = `https://www.youtube.com/embed/${u.searchParams.get("v")}`;
+    } else if (u.hostname === "youtu.be") {
+      embedSrc = `https://www.youtube.com/embed/${u.pathname.slice(1)}`;
+    } else if (u.hostname.includes("vimeo.com")) {
+      const id = u.pathname.split("/").filter(Boolean).pop();
+      embedSrc = `https://player.vimeo.com/video/${id}`;
+    }
+    if (embedSrc) {
+      return `<iframe src="${embedSrc}" style="width:100%;height:260px;border:0;display:block;" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>`;
+    }
+    return `<div style="padding:24px;text-align:center;"><a href="${escapeHTML(url)}" target="_blank" rel="noopener noreferrer" class="btn btn-outline">Open video</a></div>`;
+  } catch {
+    return "";
   }
 }
 
-/* --- Auth modal --- */
+/* --- Auth modal (sign in / sign up / verify / forgot / reset) --- */
 
 function openAuthModal(mode) {
   state.authMode = mode;
   state.authError = "";
+  state.authNotice = "";
   renderAuthModal();
-}
-
-function renderAuthModal() {
-  const isSignup = state.authMode === "signup";
-  openOverlay(`
-    <div class="auth-tabs">
-      <button class="auth-tab ${!isSignup ? "active" : ""}" id="tab-signin">Sign in</button>
-      <button class="auth-tab ${isSignup ? "active" : ""}" id="tab-signup">Create account</button>
-    </div>
-    <form class="modal-body" id="auth-form">
-      <h3 class="disp" style="font-size:26px;margin:0 0 4px;">${isSignup ? "CREATE ACCOUNT" : "WELCOME BACK"}</h3>
-      <p style="color:var(--muted);font-size:14px;margin-bottom:22px;">
-        ${isSignup ? "Sign up to start training and track your rank." : "Sign in to your dojo account."}
-      </p>
-      ${isSignup ? field("name", "Full name", "text", "Jane Kim") : ""}
-      ${field("email", "Email", "email", "jane@example.com")}
-      ${field("password", "Password", "password", isSignup ? "At least 8 characters" : "••••••••")}
-      ${state.authError ? `<p class="field-error">${escapeHTML(state.authError)}</p>` : ""}
-      <button type="submit" class="btn btn-primary btn-block" ${state.authBusy ? "disabled" : ""}>
-        ${state.authBusy ? "Please wait…" : isSignup ? "Create account" : "Sign in"}
-      </button>
-    </form>
-  `, () => {
-    document.getElementById("tab-signin").addEventListener("click", () => openAuthModal("signin"));
-    document.getElementById("tab-signup").addEventListener("click", () => openAuthModal("signup"));
-    document.getElementById("auth-form").addEventListener("submit", handleAuthSubmit);
-  });
 }
 
 function field(id, label, type, placeholder) {
@@ -360,6 +392,108 @@ function field(id, label, type, placeholder) {
       <input class="field-input" id="field-${id}" type="${type}" placeholder="${placeholder}" required />
     </label>
   `;
+}
+
+function renderAuthModal() {
+  const mode = state.authMode;
+  const messages = state.authError
+    ? `<p class="field-error">${escapeHTML(state.authError)}</p>`
+    : state.authNotice
+      ? `<p class="field-notice">${escapeHTML(state.authNotice)}</p>`
+      : "";
+
+  if (mode === "signin" || mode === "signup") {
+    const isSignup = mode === "signup";
+    openOverlay(`
+      <div class="auth-tabs">
+        <button class="auth-tab ${!isSignup ? "active" : ""}" id="tab-signin">Sign in</button>
+        <button class="auth-tab ${isSignup ? "active" : ""}" id="tab-signup">Create account</button>
+      </div>
+      <form class="modal-body" id="auth-form">
+        <h3 class="disp" style="font-size:26px;margin:0 0 4px;">${isSignup ? "CREATE ACCOUNT" : "WELCOME BACK"}</h3>
+        <p style="color:var(--muted);font-size:14px;margin-bottom:22px;">
+          ${isSignup ? "Sign up to start training and track your rank." : "Sign in to your dojo account."}
+        </p>
+        ${isSignup ? field("name", "Full name", "text", "Jane Kim") : ""}
+        ${field("email", "Email", "email", "jane@example.com")}
+        ${field("password", "Password", "password", isSignup ? "At least 8 characters" : "••••••••")}
+        ${messages}
+        <button type="submit" class="btn btn-primary btn-block" ${state.authBusy ? "disabled" : ""}>
+          ${state.authBusy ? "Please wait…" : isSignup ? "Create account" : "Sign in"}
+        </button>
+        ${!isSignup ? `<button type="button" class="link-btn" id="go-forgot" style="margin-top:14px;">Forgot password?</button>` : ""}
+      </form>
+    `, () => {
+      document.getElementById("tab-signin").addEventListener("click", () => openAuthModal("signin"));
+      document.getElementById("tab-signup").addEventListener("click", () => openAuthModal("signup"));
+      document.getElementById("auth-form").addEventListener("submit", handleAuthSubmit);
+      const forgotBtn = document.getElementById("go-forgot");
+      if (forgotBtn) forgotBtn.addEventListener("click", () => openAuthModal("forgot"));
+    });
+    return;
+  }
+
+  if (mode === "verify") {
+    openOverlay(`
+      <form class="modal-body" id="verify-form">
+        <h3 class="disp" style="font-size:26px;margin:0 0 4px;">CHECK YOUR EMAIL</h3>
+        <p style="color:var(--muted);font-size:14px;margin-bottom:22px;">
+          We sent a 6-digit code to <strong style="color:var(--bone);">${escapeHTML(state.currentUser?.email || "")}</strong>.
+        </p>
+        ${field("otp", "Verification code", "text", "123456")}
+        ${messages}
+        <button type="submit" class="btn btn-primary btn-block" ${state.authBusy ? "disabled" : ""}>
+          ${state.authBusy ? "Verifying…" : "Verify email"}
+        </button>
+        <button type="button" class="link-btn" id="resend-otp" style="margin-top:14px;">Resend code</button>
+        <button type="button" class="link-btn" id="skip-verify" style="margin-top:8px; display:block;">Skip for now</button>
+      </form>
+    `, () => {
+      document.getElementById("verify-form").addEventListener("submit", handleVerifySubmit);
+      document.getElementById("resend-otp").addEventListener("click", handleResendOtp);
+      document.getElementById("skip-verify").addEventListener("click", closeModal);
+    });
+    return;
+  }
+
+  if (mode === "forgot") {
+    openOverlay(`
+      <form class="modal-body" id="forgot-form">
+        <h3 class="disp" style="font-size:26px;margin:0 0 4px;">RESET PASSWORD</h3>
+        <p style="color:var(--muted);font-size:14px;margin-bottom:22px;">Enter your account email and we'll send a reset code.</p>
+        ${field("email", "Email", "email", "jane@example.com")}
+        ${messages}
+        <button type="submit" class="btn btn-primary btn-block" ${state.authBusy ? "disabled" : ""}>
+          ${state.authBusy ? "Sending…" : "Send reset code"}
+        </button>
+        <button type="button" class="link-btn" id="back-signin" style="margin-top:14px;">Back to sign in</button>
+      </form>
+    `, () => {
+      document.getElementById("forgot-form").addEventListener("submit", handleForgotSubmit);
+      document.getElementById("back-signin").addEventListener("click", () => openAuthModal("signin"));
+    });
+    return;
+  }
+
+  if (mode === "reset") {
+    openOverlay(`
+      <form class="modal-body" id="reset-form">
+        <h3 class="disp" style="font-size:26px;margin:0 0 4px;">ENTER NEW PASSWORD</h3>
+        <p style="color:var(--muted);font-size:14px;margin-bottom:22px;">
+          Enter the code sent to <strong style="color:var(--bone);">${escapeHTML(state.resetEmail)}</strong> and choose a new password.
+        </p>
+        ${field("otp", "Reset code", "text", "123456")}
+        ${field("password", "New password", "password", "At least 8 characters")}
+        ${messages}
+        <button type="submit" class="btn btn-primary btn-block" ${state.authBusy ? "disabled" : ""}>
+          ${state.authBusy ? "Resetting…" : "Reset password"}
+        </button>
+      </form>
+    `, () => {
+      document.getElementById("reset-form").addEventListener("submit", handleResetSubmit);
+    });
+    return;
+  }
 }
 
 async function handleAuthSubmit(e) {
@@ -388,18 +522,13 @@ async function handleAuthSubmit(e) {
     renderTierGrid();
     renderVideoGrid();
 
-    if (state.pendingTier) {
-      const tier = state.pendingTier;
-      state.pendingTier = null;
-      if (tier.priceCents === 0) {
-        await subscribeToTier(tier);
-        closeModal();
-      } else {
-        openCheckoutModal(tier);
-      }
-    } else {
-      closeModal();
+    if (isSignup) {
+      state.authBusy = false;
+      openAuthModal("verify");
+      return;
     }
+
+    await resumePendingTierOrClose();
   } catch (err) {
     state.authBusy = false;
     state.authError = err.message;
@@ -407,7 +536,94 @@ async function handleAuthSubmit(e) {
   }
 }
 
-/* --- Checkout modal --- */
+async function handleVerifySubmit(e) {
+  e.preventDefault();
+  const code = document.getElementById("field-otp").value.trim();
+  state.authBusy = true;
+  state.authError = "";
+  renderAuthModal();
+  try {
+    await api("/auth/verify-email", { method: "POST", body: JSON.stringify({ code }) });
+    state.currentUser.emailVerified = true;
+    updateNavAuthState();
+    await resumePendingTierOrClose();
+  } catch (err) {
+    state.authBusy = false;
+    state.authError = err.message;
+    renderAuthModal();
+  }
+}
+
+async function handleResendOtp() {
+  state.authError = "";
+  try {
+    await api("/auth/resend-verification", { method: "POST" });
+    state.authNotice = "A new code is on its way.";
+  } catch (err) {
+    state.authError = err.message;
+  }
+  renderAuthModal();
+}
+
+async function handleForgotSubmit(e) {
+  e.preventDefault();
+  const email = document.getElementById("field-email").value.trim();
+  state.authBusy = true;
+  state.authError = "";
+  renderAuthModal();
+  try {
+    await api("/auth/forgot-password", { method: "POST", body: JSON.stringify({ email }) });
+    state.resetEmail = email;
+    state.authBusy = false;
+    openAuthModal("reset");
+  } catch (err) {
+    state.authBusy = false;
+    state.authError = err.message;
+    renderAuthModal();
+  }
+}
+
+async function handleResetSubmit(e) {
+  e.preventDefault();
+  const code = document.getElementById("field-otp").value.trim();
+  const newPassword = document.getElementById("field-password").value;
+  state.authBusy = true;
+  state.authError = "";
+  renderAuthModal();
+  try {
+    await api("/auth/reset-password", {
+      method: "POST",
+      body: JSON.stringify({ email: state.resetEmail, code, newPassword }),
+    });
+    state.authBusy = false;
+    state.authError = "";
+    openAuthModal("signin");
+    state.authNotice = "Password reset. Sign in with your new password.";
+    renderAuthModal();
+  } catch (err) {
+    state.authBusy = false;
+    state.authError = err.message;
+    renderAuthModal();
+  }
+}
+
+async function resumePendingTierOrClose() {
+  if (state.pendingTier) {
+    const tier = state.pendingTier;
+    state.pendingTier = null;
+    if (tier.priceCents === 0) {
+      await subscribeToFreeTier(tier);
+      closeModal();
+    } else {
+      closeModal();
+      await startCheckout(tier);
+    }
+  } else {
+    closeModal();
+  }
+}
+
+/* --- Subscriptions / Stripe checkout --- */
 
 async function handleTierSelect(tier) {
   if (!state.currentUser) {
@@ -416,18 +632,15 @@ async function handleTierSelect(tier) {
     return;
   }
   if (tier.priceCents === 0) {
-    await subscribeToTier(tier);
+    await subscribeToFreeTier(tier);
     return;
   }
-  openCheckoutModal(tier);
+  await startCheckout(tier);
 }
 
-async function subscribeToTier(tier) {
+async function subscribeToFreeTier(tier) {
   try {
-    const data = await api("/subscriptions", {
-      method: "POST",
-      body: JSON.stringify({ tierSlug: tier.slug }),
-    });
+    const data = await api("/subscriptions", { method: "POST", body: JSON.stringify({ tierSlug: tier.slug }) });
     state.currentUser = data.user;
     updateNavAuthState();
     renderTierGrid();
@@ -437,71 +650,18 @@ async function subscribeToTier(tier) {
   }
 }
 
-function openCheckoutModal(tier) {
-  state.checkoutTier = tier;
-  state.checkoutStep = "form";
-  renderCheckoutModal();
-}
-
-function renderCheckoutModal() {
-  const tier = state.checkoutTier;
-
-  if (state.checkoutStep === "form") {
-    openOverlay(`
-      <form class="modal-body" id="checkout-form">
-        <h3 class="disp" style="font-size:26px;margin:0 0 4px;">JOIN ${escapeHTML(tier.name.toUpperCase())}</h3>
-        <p style="color:var(--muted);font-size:14px;margin-bottom:22px;">${formatPrice(tier.priceCents)}${escapeHTML(tier.period)} · signed in as ${escapeHTML(state.currentUser.email)} · cancel anytime</p>
-        ${field("cc-name", "Name on card", "text", "Jane Kim")}
-        ${field("cc-number", "Card number", "text", "4242 4242 4242 4242")}
-        <div class="field-row">
-          ${field("cc-exp", "Expiry", "text", "MM/YY")}
-          ${field("cc-cvc", "CVC", "text", "123")}
-        </div>
-        <button type="submit" class="btn btn-primary btn-block">Confirm & subscribe</button>
-        <p class="trust-note">Proof-of-concept checkout — no real payment is processed. The subscription is recorded for real in the database.</p>
-      </form>
-    `, () => {
-      document.getElementById("checkout-form").addEventListener("submit", async (e) => {
-        e.preventDefault();
-        state.checkoutStep = "processing";
-        renderCheckoutModal();
-
-        // Simulated card-network delay -- swap this block for a real
-        // payment-provider call (e.g. Stripe) when going to production.
-        setTimeout(async () => {
-          try {
-            await subscribeToTier(tier);
-            state.checkoutStep = "success";
-            renderCheckoutModal();
-          } catch (err) {
-            state.checkoutStep = "form";
-            renderCheckoutModal();
-            alert(err.message);
-          }
-        }, 1400);
-      });
-    });
-  } else if (state.checkoutStep === "processing") {
-    openOverlay(`
-      <div class="modal-body" style="text-align:center;padding:70px 32px;">
-        <div class="spinner"></div>
-        <p style="color:var(--muted);">Processing your membership…</p>
-      </div>
-    `);
-  } else if (state.checkoutStep === "success") {
-    openOverlay(`
-      <div class="modal-body" style="text-align:center;padding:56px 32px;">
-        <div class="success-icon">✓</div>
-        <h3 class="disp" style="font-size:26px;margin:0 0 8px;">YOU'RE IN.</h3>
-        <p style="color:var(--muted);margin-bottom:26px;">${escapeHTML(tier.name)} membership is active. The full library just unlocked.</p>
-        <button class="btn btn-light" id="start-watching">Start watching</button>
-      </div>
-    `, () => {
-      document.getElementById("start-watching").addEventListener("click", () => {
-        closeModal();
-        scrollToId("library");
-      });
-    });
+// Paid tiers redirect to Stripe's own hosted checkout page -- card details
+// are typed there, never collected by this app.
+async function startCheckout(tier) {
+  try {
+    const data = await api("/checkout/create-session", { method: "POST", body: JSON.stringify({ tierSlug: tier.slug }) });
+    if (data.url) {
+      window.location.href = data.url;
+    } else {
+      alert("Checkout is not fully configured yet.");
+    }
+  } catch (err) {
+    alert(err.message);
   }
 }
 
@@ -511,6 +671,7 @@ function updateNavAuthState() {
   const badge = document.getElementById("tier-badge");
   const signInBtn = document.getElementById("nav-signin");
   const joinBtn = document.getElementById("nav-join");
+  const adminBtn = document.getElementById("nav-admin");
 
   if (state.currentUser) {
     const sub = state.currentUser.subscriptionTier;
@@ -518,17 +679,24 @@ function updateNavAuthState() {
       const tier = state.tiers.find((t) => t.slug === sub);
       badge.textContent = tier ? tier.name : sub;
       badge.classList.remove("hidden");
+    } else if (!state.currentUser.emailVerified) {
+      badge.textContent = "Verify email";
+      badge.classList.remove("hidden");
+      badge.onclick = () => openAuthModal("verify");
+      badge.style.cursor = "pointer";
     } else {
       badge.classList.add("hidden");
     }
     signInBtn.textContent = "Log out (" + state.currentUser.name.split(" ")[0] + ")";
     signInBtn.onclick = handleLogout;
     joinBtn.textContent = state.currentUser.subscriptionTier ? "Manage" : "Join now";
+    adminBtn.classList.toggle("hidden", !state.currentUser.isAdmin);
   } else {
     badge.classList.add("hidden");
     signInBtn.textContent = "Sign in";
     signInBtn.onclick = () => openAuthModal("signin");
     joinBtn.textContent = "Join now";
+    adminBtn.classList.add("hidden");
   }
 }
 
@@ -555,6 +723,7 @@ function wireNav() {
   document.getElementById("hero-membership").addEventListener("click", () => scrollToId("membership"));
   document.getElementById("nav-join").addEventListener("click", () => scrollToId("membership"));
   document.getElementById("nav-signin").addEventListener("click", () => openAuthModal("signin"));
+  document.getElementById("nav-admin").addEventListener("click", () => { window.location.href = "admin.html"; });
 
   const menuToggle = document.getElementById("menu-toggle");
   const navLinks = document.getElementById("nav-links");
@@ -567,7 +736,6 @@ function wireNav() {
 
   menuToggle.addEventListener("click", () => setMenuOpen(!navLinks.classList.contains("open")));
 
-  // Close the mobile menu after tapping any nav action inside it.
   navLinks.addEventListener("click", (e) => {
     if (e.target.closest("button")) setMenuOpen(false);
   });

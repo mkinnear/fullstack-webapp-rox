@@ -1,24 +1,33 @@
 <?php
 
 const SESSION_LIFETIME_DAYS = 30;
+const OTP_LIFETIME_MINUTES = 10;
+
+/* ---------------- SESSIONS (hashed tokens) ---------------- */
 
 function createSession(PDO $pdo, int $userId): string {
     $token = bin2hex(random_bytes(32));
     $stmt = $pdo->prepare(
-        "INSERT INTO sessions (token, user_id, expires_at)
-         VALUES (:token, :user_id, NOW() + (:days || ' days')::interval)"
+        "INSERT INTO sessions (token_hash, user_id, expires_at)
+         VALUES (:hash, :user_id, NOW() + (:days || ' days')::interval)"
     );
     $stmt->execute([
-        'token' => $token,
+        'hash' => hash('sha256', $token),
         'user_id' => $userId,
         'days' => SESSION_LIFETIME_DAYS,
     ]);
-    return $token;
+    return $token; // raw token goes to the client; only the hash is stored
 }
 
 function destroySession(PDO $pdo, string $token): void {
-    $stmt = $pdo->prepare('DELETE FROM sessions WHERE token = :token');
-    $stmt->execute(['token' => $token]);
+    $stmt = $pdo->prepare('DELETE FROM sessions WHERE token_hash = :hash');
+    $stmt->execute(['hash' => hash('sha256', $token)]);
+}
+
+/** Invalidate every session for a user -- used after a password reset. */
+function destroyAllSessions(PDO $pdo, int $userId): void {
+    $stmt = $pdo->prepare('DELETE FROM sessions WHERE user_id = :id');
+    $stmt->execute(['id' => $userId]);
 }
 
 function bearerToken(): ?string {
@@ -36,12 +45,12 @@ function getUserFromToken(PDO $pdo, ?string $token): ?array {
         return null;
     }
     $stmt = $pdo->prepare(
-        "SELECT u.id, u.name, u.email, u.subscription_tier
+        "SELECT u.id, u.name, u.email, u.subscription_tier, u.is_admin, u.email_verified
          FROM sessions s
          JOIN users u ON u.id = s.user_id
-         WHERE s.token = :token AND s.expires_at > NOW()"
+         WHERE s.token_hash = :hash AND s.expires_at > NOW()"
     );
-    $stmt->execute(['token' => $token]);
+    $stmt->execute(['hash' => hash('sha256', $token)]);
     $user = $stmt->fetch(PDO::FETCH_ASSOC);
     return $user ?: null;
 }
@@ -55,4 +64,53 @@ function requireAuth(PDO $pdo): array {
         exit;
     }
     return $user;
+}
+
+/** Returns the authenticated admin or halts with 401/403. */
+function requireAdmin(PDO $pdo): array {
+    $user = requireAuth($pdo);
+    $isAdmin = $user['is_admin'] === true || $user['is_admin'] === 't';
+    if (!$isAdmin) {
+        http_response_code(403);
+        echo json_encode(['error' => 'Admin access required.']);
+        exit;
+    }
+    return $user;
+}
+
+/* ---------------- OTP (email verification / password reset) ---------------- */
+
+function issueOtp(PDO $pdo, int $userId, string $purpose): string {
+    $code = generateOtpCode();
+    $stmt = $pdo->prepare(
+        "INSERT INTO otp_codes (user_id, code_hash, purpose, expires_at)
+         VALUES (:user_id, :hash, :purpose, NOW() + (:mins || ' minutes')::interval)"
+    );
+    $stmt->execute([
+        'user_id' => $userId,
+        'hash' => hash('sha256', $code),
+        'purpose' => $purpose,
+        'mins' => OTP_LIFETIME_MINUTES,
+    ]);
+    return $code; // raw code is emailed to the user; only the hash is stored
+}
+
+/** Verifies a code and marks it consumed. Returns true if valid. */
+function consumeOtp(PDO $pdo, int $userId, string $purpose, string $code): bool {
+    $stmt = $pdo->prepare(
+        "SELECT id, code_hash FROM otp_codes
+         WHERE user_id = :user_id AND purpose = :purpose
+           AND consumed_at IS NULL AND expires_at > NOW()
+         ORDER BY created_at DESC LIMIT 1"
+    );
+    $stmt->execute(['user_id' => $userId, 'purpose' => $purpose]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    if (!$row || !hash_equals($row['code_hash'], hash('sha256', $code))) {
+        return false;
+    }
+
+    $update = $pdo->prepare('UPDATE otp_codes SET consumed_at = NOW() WHERE id = :id');
+    $update->execute(['id' => $row['id']]);
+    return true;
 }

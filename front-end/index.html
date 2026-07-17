@@ -19,6 +19,7 @@
       <button class="link-btn" id="nav-membership">Membership</button>
       <span id="tier-badge" class="tier-badge hidden"></span>
       <button class="link-btn" id="nav-signin">Sign in</button>
+      <button class="link-btn hidden" id="nav-admin">Admin</button>
       <button class="btn btn-primary" id="nav-join">Join now</button>
     </nav>
     <button class="menu-toggle" id="menu-toggle" aria-label="Toggle menu" aria-expanded="false" aria-controls="nav-links">
@@ -33,9 +34,9 @@
   <img class="hero-cutout" src="hero-photo.png" alt="Young karate student in a white gi, seated" />
   <div class="wrap hero-inner">
     <div class="hero-text">
-      <p class="eyebrow">Est. 1987 &nbsp;·&nbsp; Full-Contact Karate</p>
-      <h1 class="disp hero-title">TRAIN WITH<br />INTENT.</h1>
-      <p class="hero-sub">Structured karate instruction from white belt to black — kihon, kata, kumite and conditioning, taught the way a real dojo teaches: in order, with correction, and without shortcuts.</p>
+      <p class="eyebrow" data-content-key="hero_eyebrow">Est. 1987 &nbsp;·&nbsp; Full-Contact Karate</p>
+      <h1 class="disp hero-title"><span data-content-key="hero_title_line1">TRAIN WITH</span><br /><span data-content-key="hero_title_line2">INTENT.</span></h1>
+      <p class="hero-sub" data-content-key="hero_subtitle">Structured karate instruction from white belt to black — kihon, kata, kumite and conditioning, taught the way a real dojo teaches: in order, with correction, and without shortcuts.</p>
       <div class="hero-actions">
         <button class="btn btn-light" id="hero-watch"><span class="play-ico"></span>Watch a class</button>
         <button class="btn btn-outline" id="hero-membership">View membership</button>
@@ -56,9 +57,9 @@
   <div class="section-head">
     <div>
       <p class="eyebrow">Video library</p>
-      <h2 class="disp section-title">EVERY LESSON, BY RANK.</h2>
+      <h2 class="disp section-title" data-content-key="library_title">EVERY LESSON, BY RANK.</h2>
     </div>
-    <p class="section-note">Filter by belt to see what's next on your path, or by technique type to drill a specific skill. Lessons are numbered in the order your dojo teaches them.</p>
+    <p class="section-note" data-content-key="library_note">Filter by belt to see what's next on your path, or by technique type to drill a specific skill. Lessons are numbered in the order your dojo teaches them.</p>
   </div>
 
   <div class="filter-row" id="belt-filters"></div>
@@ -73,7 +74,7 @@
   <div class="wrap section">
     <div class="section-head center">
       <p class="eyebrow">Membership</p>
-      <h2 class="disp section-title">PICK YOUR RANK.</h2>
+      <h2 class="disp section-title" data-content-key="membership_title">PICK YOUR RANK.</h2>
     </div>
     <div class="tier-grid" id="tier-grid"></div>
   </div>
@@ -82,7 +83,7 @@
 <footer class="site-footer">
   <div class="wrap footer-inner">
     <div class="logo small"><span class="logo-dot"></span>KOKORO KARATE</div>
-    <p class="footer-note">White belt to black. No shortcuts.</p>
+    <p class="footer-note" data-content-key="footer_note">White belt to black. No shortcuts.</p>
   </div>
 </footer>
 
