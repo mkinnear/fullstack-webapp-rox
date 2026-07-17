@@ -84,11 +84,38 @@ input:focus { outline: 2px solid var(--red); outline-offset: 1px; }
   background: var(--red); transform: rotate(18deg); opacity: 0.9;
   clip-path: polygon(40% 0%, 60% 0%, 20% 100%, 0% 100%);
 }
-.hero-inner { position: relative; z-index: 1; padding: 96px 24px 88px; }
+.hero-inner {
+  position: relative; z-index: 2; padding: 96px 24px 88px;
+  display: flex; align-items: center; justify-content: space-between; gap: 32px; flex-wrap: wrap;
+}
+.hero-text { flex: 1 1 480px; }
 .eyebrow { font-size: 13px; letter-spacing: 3px; text-transform: uppercase; color: var(--red); font-weight: 700; margin: 0 0 18px; }
 .hero-title { font-size: clamp(48px, 9vw, 108px); line-height: 0.95; margin: 0; max-width: 780px; }
 .hero-sub { font-size: 18px; color: #B8B4A8; max-width: 480px; margin-top: 24px; line-height: 1.6; }
 .hero-actions { display: flex; gap: 14px; margin-top: 40px; flex-wrap: wrap; }
+
+.hero-cutout {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 100px;
+  height: 100%;
+  width: auto;
+  max-width: none;
+  z-index: 1;
+  pointer-events: none;
+  user-select: none;
+}
+@media (max-width: 720px) {
+  .hero-cutout {
+    position: static;
+    display: block;
+    height: auto;
+    width: 60%;
+    max-width: 260px;
+    margin: 0 auto 8px;
+  }
+}
 
 /* BELT STRIP */
 .belt-strip { border-bottom: 1px solid var(--line); background: var(--panel); }
