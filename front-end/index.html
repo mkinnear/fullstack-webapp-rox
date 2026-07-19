@@ -3,8 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Kokoro Karate — Train with intent</title>
+<title>IKKO Academy — Train with intent</title>
 <link rel="stylesheet" href="style.css" />
+<link rel="icon" type="image/x-icon" href="assets/favicon.ico">
 </head>
 <body>
 
@@ -12,7 +13,8 @@
 <header class="site-header">
   <div class="wrap header-inner">
     <div class="logo" id="nav-home">
-      <span class="logo-dot"></span>KOKORO KARATE
+      <img src="assets/favicon-96x96.png" alt="IKKO Academy Logo" class="logo-icon">
+      IKKO ACADEMY
     </div>
     <nav class="nav-links" id="nav-links">
       <button class="link-btn" id="nav-library">Library</button>
@@ -28,15 +30,62 @@
   </div>
 </header>
 
+<!-- LANDING BANNER -->
+<section class="landing-banner">
+  <img src="assets/landing-banner.jpeg" alt="IKKO Academy — Official Digital Learning Platform. Train, Learn, Grow. Preserving the Art. Building the Future." />
+</section>
+
+<!-- PHILOSOPHY DIVIDER -->
+<section class="section-divider">
+  <div class="wrap section-divider-inner">
+    <span class="section-divider-label" data-content-key="philosophy_divider_label">IKKO Academy Philosophy</span>
+  </div>
+</section>
+
+<!-- ABOUT -->
+<section class="about">
+  <div class="about-strike"></div>
+  <div class="wrap about-inner">
+    <p class="eyebrow" data-content-key="about_eyebrow">Who we are</p>
+    <h2 class="disp about-title" data-content-key="about_title">ABOUT IKKO ACADEMY</h2>
+    <p class="about-sub" data-content-key="about_body">IKKO Academy is the official digital dojo of the International Kenbukai Karate &amp; Kobudo Federation — every kihon, kata, kumite and conditioning lesson taught in order, by real instructors, so you train with the same structure and correction as students on the mat.</p>
+  </div>
+</section>
+
+<!-- EVENTS DIVIDER -->
+<section class="section-divider">
+  <div class="wrap section-divider-inner">
+    <span class="section-divider-label" data-content-key="events_divider_label">New &amp; Upcoming Events</span>
+  </div>
+</section>
+
+<!-- EVENTS CAROUSEL -->
+<section class="wrap section" id="events">
+  <div class="carousel" id="events-carousel">
+    <button class="carousel-arrow carousel-arrow-left" id="events-prev" aria-label="Previous event">‹</button>
+    <div class="carousel-track-wrap">
+      <div class="carousel-track" id="events-track"></div>
+    </div>
+    <button class="carousel-arrow carousel-arrow-right" id="events-next" aria-label="Next event">›</button>
+  </div>
+  <div class="carousel-dots" id="events-dots"></div>
+</section>
+
 <!-- HERO -->
 <section class="hero">
   <div class="hero-strike"></div>
-  <img class="hero-cutout" src="hero-photo.png" alt="Young karate student in a white gi, seated" />
+  <img class="hero-cutout" src="assets/hero-photo.png" alt="Young karate student in a white gi, seated" />
   <div class="wrap hero-inner">
     <div class="hero-text">
-      <p class="eyebrow" data-content-key="hero_eyebrow">Est. 1987 &nbsp;·&nbsp; Full-Contact Karate</p>
-      <h1 class="disp hero-title"><span data-content-key="hero_title_line1">TRAIN WITH</span><br /><span data-content-key="hero_title_line2">INTENT.</span></h1>
-      <p class="hero-sub" data-content-key="hero_subtitle">Structured karate instruction from white belt to black — kihon, kata, kumite and conditioning, taught the way a real dojo teaches: in order, with correction, and without shortcuts.</p>
+      <p class="eyebrow" data-content-key="hero_eyebrow">Official Digital Learning Platform</p>
+      <h1 class="disp hero-title"><span data-content-key="hero_title_line1">TRAIN. LEARN.</span><br /><span data-content-key="hero_title_line2">GROW.</span></h1>
+      <p class="hero-sub" data-content-key="hero_subtitle">IKKO Academy is the official online learning platform preserving and sharing the teachings of IKKO Karate. From live sessions and a recorded lesson library to belt-specific curriculum, training guides and grading prep, we help students revisit lessons, deepen their understanding and keep developing between classes — extending, never replacing, the discipline and philosophy learned in the dojo.</p>
+      <div class="content-tags">
+        <span class="pill subtle">Live Training</span>
+        <span class="pill subtle">Lesson Library</span>
+        <span class="pill subtle">Belt Curriculum</span>
+        <span class="pill subtle">Grading Prep</span>
+      </div>
       <div class="hero-actions">
         <button class="btn btn-light" id="hero-watch"><span class="play-ico"></span>Watch a class</button>
         <button class="btn btn-outline" id="hero-membership">View membership</button>
@@ -82,7 +131,7 @@
 
 <footer class="site-footer">
   <div class="wrap footer-inner">
-    <div class="logo small"><span class="logo-dot"></span>KOKORO KARATE</div>
+    <div class="logo small">IKKO ACADEMY</div>
     <p class="footer-note" data-content-key="footer_note">White belt to black. No shortcuts.</p>
   </div>
 </footer>

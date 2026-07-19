@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Kokoro Karate — Admin</title>
+<title>IKKO Academy — Admin</title>
 <link rel="stylesheet" href="style.css" />
 <link rel="stylesheet" href="admin.css" />
 </head>
@@ -11,11 +11,17 @@
 
 <header class="site-header">
   <div class="wrap header-inner">
-    <div class="logo"><span class="logo-dot"></span>KOKORO KARATE <span style="color:var(--muted);font-size:14px;margin-left:8px;">/ admin</span></div>
-    <nav class="nav-links">
+    <div class="logo" id="nav-home">
+      <img src="assets/favicon-96x96.png" alt="IKKO Academy Logo" class="logo-icon">
+      IKKO ACADEMY <span style="color:var(--muted);font-size:14px;margin-left:8px;">/ admin</span>
+    </div>
+    <nav class="nav-links" id="nav-links">
       <a class="link-btn" href="index.html">View site</a>
       <button class="link-btn hidden" id="admin-logout">Log out</button>
     </nav>
+    <button class="menu-toggle" id="menu-toggle" aria-label="Toggle menu" aria-expanded="false" aria-controls="nav-links">
+      <span></span><span></span><span></span>
+    </button>
   </div>
 </header>
 
@@ -82,6 +88,24 @@
       <div id="video-list"></div>
     </section>
 
+    <section class="admin-panel">
+      <h2 class="disp" style="font-size:26px;margin:0 0 4px;">ADD AN EVENT</h2>
+      <form id="add-event-form" class="admin-video-form">
+        <label class="field"><span class="field-label">Title</span><input class="field-input" id="ne-title" required /></label>
+        <label class="field"><span class="field-label">Date</span><input class="field-input" id="ne-date" type="date" /></label>
+        <label class="field"><span class="field-label">Location</span><input class="field-input" id="ne-location" /></label>
+        <label class="field admin-field-wide"><span class="field-label">Description</span><input class="field-input" id="ne-description" /></label>
+        <label class="field admin-field-wide"><span class="field-label">Image URL (optional)</span><input class="field-input" id="ne-image" placeholder="https://..." /></label>
+        <label class="field admin-field-wide"><span class="field-label">Link URL (optional, e.g. registration)</span><input class="field-input" id="ne-link" placeholder="https://..." /></label>
+        <button type="submit" class="btn btn-primary">Add event</button>
+      </form>
+    </section>
+
+    <section class="admin-panel">
+      <h2 class="disp" style="font-size:26px;margin:0 0 4px;">EVENTS</h2>
+      <p style="color:var(--muted);font-size:14px;margin-bottom:20px;">Shown as a carousel on the homepage, soonest date first.</p>
+      <div id="event-list"></div>
+    </section>
   </div>
 </main>
 

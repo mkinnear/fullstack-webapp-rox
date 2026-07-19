@@ -83,6 +83,8 @@ async function init() {
     return;
   }
 
+  api("/events").then(renderEventsCarousel).catch((err) => console.error("events failed to load", err));
+
   renderVideoGrid();
   renderTierGrid();
 
@@ -182,7 +184,12 @@ function renderTierGrid() {
   el.innerHTML = "";
   state.tiers.forEach((tier) => {
     const belt = beltById(tier.belt);
-    const isCurrent = state.currentUser && state.currentUser.subscriptionTier === tier.slug;
+    const user = state.currentUser;
+    const onThisTier = user && user.subscriptionTier === tier.slug;
+    // A trial only counts as "current" while still active; once expired the
+    // card should stop saying "Current plan" and instead point at upgrading.
+    const isCurrent = onThisTier && (tier.priceCents > 0 || user.subscriptionActive);
+    const trialExhausted = tier.priceCents === 0 && user && user.trialUsed && !isCurrent;
 
     const card = document.createElement("div");
     card.className = "tier-card" + (tier.featured ? " featured" : "");
@@ -207,12 +214,19 @@ function renderTierGrid() {
       <ul class="tier-features">
         ${tier.features.map((f) => `<li>${escapeHTML(f)}</li>`).join("")}
       </ul>
+      ${trialExhausted ? `<p style="font-size:12px;color:var(--muted);margin:-16px 0 16px;">Already used — pick a paid plan below.</p>` : ""}
     `;
 
     const btn = document.createElement("button");
     btn.className = "tier-btn" + (tier.featured ? " primary" : "");
-    btn.textContent = isCurrent ? "Current plan" : tier.priceCents === 0 ? "Start free" : "Subscribe";
-    btn.disabled = !!isCurrent;
+    btn.textContent = isCurrent
+      ? "Current plan"
+      : trialExhausted
+        ? "Trial used"
+        : tier.priceCents === 0
+          ? "Start 7-day trial"
+          : "Subscribe";
+    btn.disabled = isCurrent || trialExhausted;
     btn.addEventListener("click", () => handleTierSelect(tier));
     card.appendChild(btn);
 
@@ -222,7 +236,7 @@ function renderTierGrid() {
 
 function formatPrice(cents) {
   if (cents === 0) return "Free";
-  return "$" + (cents / 100).toFixed(0);
+  return "R" + (cents / 100).toFixed(0);
 }
 
 function escapeHTML(str) {
@@ -280,7 +294,90 @@ function lockIconHTML() {
 }
 
 function isLocked(video) {
-  return video.premium && !(state.currentUser && state.currentUser.subscriptionTier);
+  return video.premium && !(state.currentUser && state.currentUser.subscriptionActive);
+}
+
+/* ---------------- EVENTS CAROUSEL ---------------- */
+
+function formatEventDate(dateStr) {
+  if (!dateStr) return "";
+  const d = new Date(dateStr + "T00:00:00");
+  if (isNaN(d)) return "";
+  return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+}
+
+function renderEventsCarousel(events) {
+  const section = document.getElementById("events");
+  const track = document.getElementById("events-track");
+  const dotsEl = document.getElementById("events-dots");
+  if (!track) return;
+
+  if (!events || events.length === 0) {
+    if (section) section.classList.add("hidden");
+    return;
+  }
+
+  track.innerHTML = events.map((e) => `
+    <article class="event-card">
+      <div class="event-card-banner" ${e.imageUrl ? `style="background-image:url('${escapeHTML(e.imageUrl)}');background-size:cover;background-position:center;"` : ""}>
+        ${e.eventDate ? `<span class="event-card-date">${escapeHTML(formatEventDate(e.eventDate))}</span>` : ""}
+      </div>
+      <div class="event-card-body">
+        ${e.location ? `<span class="event-card-location">${escapeHTML(e.location)}</span>` : ""}
+        <h3 class="event-card-title">${escapeHTML(e.title)}</h3>
+        ${e.description ? `<p class="event-card-desc">${escapeHTML(e.description)}</p>` : ""}
+        ${e.linkUrl ? `<a class="event-card-link" href="${escapeHTML(e.linkUrl)}" target="_blank" rel="noopener noreferrer">Learn more →</a>` : ""}
+      </div>
+    </article>
+  `).join("");
+
+  dotsEl.innerHTML = "";
+  events.forEach((_, i) => {
+    const dot = document.createElement("button");
+    dot.className = "carousel-dot" + (i === 0 ? " active" : "");
+    dot.setAttribute("aria-label", `Go to event ${i + 1}`);
+    dot.addEventListener("click", () => scrollCarouselToIndex(i));
+    dotsEl.appendChild(dot);
+  });
+
+  wireCarouselControls();
+}
+
+function scrollCarouselToIndex(i) {
+  const track = document.getElementById("events-track");
+  const card = track.children[i];
+  if (card) track.scrollTo({ left: card.offsetLeft - track.offsetLeft, behavior: "smooth" });
+}
+
+function wireCarouselControls() {
+  const track = document.getElementById("events-track");
+  const prevBtn = document.getElementById("events-prev");
+  const nextBtn = document.getElementById("events-next");
+  const dotsEl = document.getElementById("events-dots");
+  if (!track || track.dataset.wired) return;
+  track.dataset.wired = "true";
+
+  function cardWidth() {
+    const card = track.children[0];
+    return card ? card.getBoundingClientRect().width + 20 : 300; // + gap
+  }
+
+  prevBtn.addEventListener("click", () => track.scrollBy({ left: -cardWidth(), behavior: "smooth" }));
+  nextBtn.addEventListener("click", () => track.scrollBy({ left: cardWidth(), behavior: "smooth" }));
+
+  function updateActiveState() {
+    const index = Math.round(track.scrollLeft / cardWidth());
+    [...dotsEl.children].forEach((dot, i) => dot.classList.toggle("active", i === index));
+    prevBtn.disabled = track.scrollLeft <= 4;
+    nextBtn.disabled = track.scrollLeft >= track.scrollWidth - track.clientWidth - 4;
+  }
+
+  let scrollTimer;
+  track.addEventListener("scroll", () => {
+    clearTimeout(scrollTimer);
+    scrollTimer = setTimeout(updateActiveState, 80);
+  });
+  updateActiveState();
 }
 
 /* ---------------- MODALS ---------------- */
@@ -675,10 +772,23 @@ function updateNavAuthState() {
 
   if (state.currentUser) {
     const sub = state.currentUser.subscriptionTier;
-    if (sub) {
+    if (sub === "trial" && state.currentUser.subscriptionActive) {
+      const daysLeft = Math.max(0, Math.ceil((new Date(state.currentUser.trialEndsAt) - Date.now()) / 86400000));
+      badge.textContent = `Trial · ${daysLeft} day${daysLeft === 1 ? "" : "s"} left`;
+      badge.classList.remove("hidden");
+      badge.onclick = null;
+      badge.style.cursor = "default";
+    } else if (sub === "trial" && !state.currentUser.subscriptionActive) {
+      badge.textContent = "Trial expired";
+      badge.classList.remove("hidden");
+      badge.onclick = () => scrollToId("membership");
+      badge.style.cursor = "pointer";
+    } else if (sub) {
       const tier = state.tiers.find((t) => t.slug === sub);
       badge.textContent = tier ? tier.name : sub;
       badge.classList.remove("hidden");
+      badge.onclick = null;
+      badge.style.cursor = "default";
     } else if (!state.currentUser.emailVerified) {
       badge.textContent = "Verify email";
       badge.classList.remove("hidden");
@@ -689,7 +799,7 @@ function updateNavAuthState() {
     }
     signInBtn.textContent = "Log out (" + state.currentUser.name.split(" ")[0] + ")";
     signInBtn.onclick = handleLogout;
-    joinBtn.textContent = state.currentUser.subscriptionTier ? "Manage" : "Join now";
+    joinBtn.textContent = state.currentUser.subscriptionActive ? "Manage" : "Join now";
     adminBtn.classList.toggle("hidden", !state.currentUser.isAdmin);
   } else {
     badge.classList.add("hidden");

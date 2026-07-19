@@ -1,4 +1,4 @@
--- Kokoro Karate schema v2
+-- IKKO Academy schema v2
 -- Adds: hashed sessions, admin role + email verification, OTP codes,
 -- rate limiting, CMS content blocks, video captions/URLs, Stripe fields.
 
@@ -11,6 +11,8 @@ CREATE TABLE IF NOT EXISTS users (
     email_verified BOOLEAN NOT NULL DEFAULT FALSE,
     subscription_tier TEXT,
     subscribed_at TIMESTAMP,
+    trial_ends_at TIMESTAMP,
+    trial_used BOOLEAN NOT NULL DEFAULT FALSE,
     stripe_customer_id TEXT,
     failed_login_attempts INT NOT NULL DEFAULT 0,
     locked_until TIMESTAMP,
@@ -52,6 +54,7 @@ CREATE TABLE IF NOT EXISTS tiers (
     tagline TEXT NOT NULL,
     featured BOOLEAN NOT NULL DEFAULT FALSE,
     sort_order INT NOT NULL DEFAULT 0,
+    trial_days INT, -- only set on the trial tier; NULL for paid tiers
     stripe_price_id TEXT -- set once the tier is created in the Stripe dashboard
 );
 
@@ -76,6 +79,24 @@ CREATE TABLE IF NOT EXISTS videos (
     sort_order INT NOT NULL DEFAULT 0
 );
 
+-- Admin-managed "new & upcoming events" shown in the homepage carousel.
+CREATE TABLE IF NOT EXISTS events (
+    id SERIAL PRIMARY KEY,
+    title TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    event_date DATE,
+    location TEXT NOT NULL DEFAULT '',
+    image_url TEXT NOT NULL DEFAULT '',
+    link_url TEXT NOT NULL DEFAULT '',
+    sort_order INT NOT NULL DEFAULT 0,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+INSERT INTO events (title, description, event_date, location, sort_order) VALUES
+    ('Autumn Grading Day', 'Belt grading for all ranks, open to spectators. Arrive 30 minutes early to warm up.', CURRENT_DATE + INTERVAL '21 days', 'Main Dojo', 1),
+    ('Kata & Bunkai Masterclass', 'A focused half-day masterclass breaking down application for the Heian series.', CURRENT_DATE + INTERVAL '35 days', 'Main Dojo', 2),
+    ('Inter-Dojo Friendly Tournament', 'Light-contact kumite tournament, all belts welcome. Team sign-up closes one week prior.', CURRENT_DATE + INTERVAL '50 days', 'Regional Sports Hall', 3);
+
 -- Admin-editable text sections shown on the public site. Always rendered
 -- as plain text on the frontend (never innerHTML) to rule out stored XSS.
 CREATE TABLE IF NOT EXISTS content_blocks (
@@ -97,24 +118,30 @@ CREATE TABLE IF NOT EXISTS payments (
 );
 
 -- Tiers
-INSERT INTO tiers (slug, name, price_cents, period, belt_slug, tagline, featured, sort_order) VALUES
-    ('free', 'White Belt', 0, '', 'white', 'Start your journey', FALSE, 1),
-    ('monthly', 'Black Belt', 2400, '/month', 'black', 'Full library, month to month', TRUE, 2),
-    ('annual', 'Black Belt Annual', 19900, '/year', 'black', 'Save 30%, commit to the craft', FALSE, 3)
+INSERT INTO tiers (slug, name, price_cents, period, belt_slug, tagline, featured, sort_order, trial_days) VALUES
+    ('trial', 'Free Trial', 0, 'for 7 days', 'white', 'Try it out, no card required', FALSE, 1, 7),
+    ('standard', 'Academy Member', 25000, '/month', 'blue', 'Perfect for the majority of students.', TRUE, 2, NULL),
+    ('advanced', 'Advanced Member', 79900, '/month', 'black', 'Designed for committed students and instructors.', FALSE, 3, NULL)
 ON CONFLICT (slug) DO NOTHING;
 
 INSERT INTO tier_features (tier_slug, feature, sort_order) VALUES
-    ('free', 'All white belt Kihon & Kata lessons', 1),
-    ('free', 'Community forum access', 2),
-    ('free', 'New basics content monthly', 3),
-    ('monthly', 'Every lesson, every belt rank', 1),
-    ('monthly', 'New class uploaded weekly', 2),
-    ('monthly', 'Technique breakdowns & bunkai', 3),
-    ('monthly', 'Cancel anytime', 4),
-    ('annual', 'Everything in Black Belt', 1),
-    ('annual', '2 form-review credits per year', 2),
-    ('annual', 'Early access to new kata drops', 3),
-    ('annual', 'Best value', 4);
+    ('trial', 'All white belt Kihon & Kata lessons', 1),
+    ('trial', 'Community forum access', 2),
+    ('trial', 'New basics content monthly', 3),
+    ('standard', '1 live online training session per month', 1),
+    ('standard', 'Access to the replay library', 2),
+    ('standard', 'Training Guide (PDF) for every session', 3),
+    ('standard', 'Resource library (terminology, grading guides, practice logs)', 4),
+    ('standard', 'Members-only announcements', 5),
+    ('advanced', 'Everything in Academy Member, plus:', 1),
+    ('advanced', 'Weekly live coaching sessions', 2),
+    ('advanced', 'Monthly Q&A with Shihan', 3),
+    ('advanced', 'Instructor development content', 4),
+    ('advanced', 'Exclusive seminars or masterclasses', 5),
+    ('advanced', 'Priority grading preparation', 6),
+    ('advanced', 'Early access to new content', 7),
+    ('advanced', 'Discounts on seminars and merchandise', 8),
+    ('advanced', 'Direct feedback on training videos', 9);
 
 INSERT INTO videos (belt_slug, lesson_number, type, title, caption, duration, instructor, premium, sort_order) VALUES
     ('white', 1, 'Kihon', 'Zenkutsu-dachi: The Front Stance', 'The foundation stance for almost every technique that follows.', '8:12', 'Sensei Rina Aoki', FALSE, 1),
@@ -135,10 +162,15 @@ INSERT INTO videos (belt_slug, lesson_number, type, title, caption, duration, in
     ('black', 1, 'Kihon', 'Black Belt Mindset: The Long Game', 'Black belt is the beginning, not the end.', '12:50', 'Sensei Kenji Ohta', TRUE, 16);
 
 INSERT INTO content_blocks (key, value) VALUES
-    ('hero_eyebrow', 'Est. 1987 · Full-Contact Karate'),
-    ('hero_title_line1', 'TRAIN WITH'),
-    ('hero_title_line2', 'INTENT.'),
-    ('hero_subtitle', 'Structured karate instruction from white belt to black — kihon, kata, kumite and conditioning, taught the way a real dojo teaches: in order, with correction, and without shortcuts.'),
+    ('philosophy_divider_label', 'IKKO Academy Philosophy'),
+    ('events_divider_label', 'New & Upcoming Events'),
+    ('about_eyebrow', 'Who we are'),
+    ('about_title', 'ABOUT IKKO ACADEMY'),
+    ('about_body', 'IKKO Academy is the official digital dojo of the International Kenbukai Karate & Kobudo Federation — every kihon, kata, kumite and conditioning lesson taught in order, by real instructors, so you train with the same structure and correction as students on the mat.'),
+    ('hero_eyebrow', 'Official Digital Learning Platform'),
+    ('hero_title_line1', 'TRAIN. LEARN.'),
+    ('hero_title_line2', 'GROW.'),
+    ('hero_subtitle', 'IKKO Academy is the official online learning platform preserving and sharing the teachings of IKKO Karate. From live sessions and a recorded lesson library to belt-specific curriculum, training guides and grading prep, we help students revisit lessons, deepen their understanding and keep developing between classes — extending, never replacing, the discipline and philosophy learned in the dojo.'),
     ('library_title', 'EVERY LESSON, BY RANK.'),
     ('library_note', 'Filter by belt to see what''s next on your path, or by technique type to drill a specific skill. Lessons are numbered in the order your dojo teaches them.'),
     ('membership_title', 'PICK YOUR RANK.'),

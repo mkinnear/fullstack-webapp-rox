@@ -62,11 +62,41 @@ function otpEmailHtml(string $name, string $code, string $purposeLabel): string 
     $safeCode = htmlspecialchars($code, ENT_QUOTES);
     return "
         <div style='font-family:sans-serif;max-width:420px;margin:0 auto;'>
-            <h2>Kokoro Karate</h2>
+            <h2>IKKO Academy</h2>
             <p>Hi $safeName,</p>
             <p>Your $purposeLabel code is:</p>
             <p style='font-size:32px;font-weight:bold;letter-spacing:4px;'>$safeCode</p>
             <p>This code expires in 10 minutes. If you didn't request this, you can safely ignore this email.</p>
+        </div>
+    ";
+}
+
+/**
+ * Sent once, right after a member verifies their email for the first time.
+ * Content mirrors the official IKKO Academy member announcement.
+ */
+function welcomeEmailHtml(string $name): string {
+    $safeName = htmlspecialchars($name, ENT_QUOTES);
+    return "
+        <div style='font-family:sans-serif;max-width:520px;margin:0 auto;line-height:1.6;color:#222;'>
+            <h2 style='margin-bottom:0;'>IKKO Academy</h2>
+            <p style='color:#666;margin-top:4px;'>Official Digital Learning Platform</p>
+            <p>Dear $safeName,</p>
+            <p>We are excited to welcome you to <strong>IKKO Academy</strong> &mdash; the official digital learning platform designed to complement your dojo training and preserve the teachings of IKKO Karate for future generations.</p>
+            <p>IKKO Academy gives you the opportunity to continue your learning beyond the dojo through structured educational resources aligned with the IKKO curriculum.</p>
+            <p>As the Academy develops, you can look forward to:</p>
+            <ul style='padding-left:20px;'>
+                <li>Live online training sessions</li>
+                <li>Access to lesson recordings</li>
+                <li>Official IKKO Academy Training Guides</li>
+                <li>Educational resources and study materials</li>
+                <li>Curriculum-based learning to support grading preparation</li>
+            </ul>
+            <p>Our vision is not to replace traditional dojo training, but to extend the learning experience &mdash; allowing you to revise lessons, deepen your understanding, and continue developing your knowledge, discipline and spirit wherever you are.</p>
+            <p style='font-weight:bold;letter-spacing:1px;'>Train &bull; Learn &bull; Grow</p>
+            <p>If you'd like to find out more about becoming an IKKO Academy member or have any questions, please feel free to get in touch.</p>
+            <p style='margin-bottom:0;'>Roxanne Cassim</p>
+            <p style='margin-top:0;color:#666;'>IKKO Academy</p>
         </div>
     ";
 }
