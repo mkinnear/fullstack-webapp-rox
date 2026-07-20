@@ -113,6 +113,9 @@ input:focus { outline: 2px solid var(--red); outline-offset: 1px; }
 .btn-primary:hover { filter: brightness(1.08); }
 .btn-primary:disabled { opacity: 0.6; cursor: default; }
 .btn-light { background: var(--bone); color: var(--ink); font-weight: 800; font-size: 14px; padding: 14px 26px; display: flex; align-items: center; gap: 8px; }
+.btn-hero { background: var(--gold); color: #2A2113; font-weight: 800; font-size: 14px; padding: 15px 30px; display: flex; align-items: center; gap: 8px; }
+.btn-hero:hover { filter: brightness(1.08); }
+.btn-hero .play-ico { border-left-color: #2A2113; }
 .btn-outline { background: transparent; color: var(--bone); border: 1px solid #55524A; font-weight: 700; font-size: 14px; padding: 14px 26px; }
 .btn-outline:hover { border-color: var(--bone); }
 .btn-block { width: 100%; padding: 14px; font-size: 14px; }

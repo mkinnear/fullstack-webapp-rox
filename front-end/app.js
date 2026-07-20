@@ -830,7 +830,6 @@ function wireNav() {
   document.getElementById("nav-library").addEventListener("click", () => scrollToId("library"));
   document.getElementById("nav-membership").addEventListener("click", () => scrollToId("membership"));
   document.getElementById("hero-watch").addEventListener("click", () => scrollToId("library"));
-  document.getElementById("hero-membership").addEventListener("click", () => scrollToId("membership"));
   document.getElementById("nav-join").addEventListener("click", () => scrollToId("membership"));
   document.getElementById("nav-signin").addEventListener("click", () => openAuthModal("signin"));
   document.getElementById("nav-admin").addEventListener("click", () => { window.location.href = "admin.html"; });

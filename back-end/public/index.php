@@ -48,11 +48,8 @@ function publicUser(array $user): array {
         'name' => $user['name'],
         'email' => $user['email'],
         'subscriptionTier' => $user['subscription_tier'],
-        'subscriptionActive' => toBool($user['subscription_active'] ?? false),
-        'trialEndsAt' => $user['trial_ends_at'] ?? null,
-        'trialUsed' => toBool($user['trial_used'] ?? false),
-        'isAdmin' => toBool($user['is_admin']),
-        'emailVerified' => toBool($user['email_verified']),
+        'isAdmin' => $user['is_admin'] === true || $user['is_admin'] === 't',
+        'emailVerified' => $user['email_verified'] === true || $user['email_verified'] === 't',
     ];
 }
 
@@ -96,7 +93,7 @@ if ($path === 'api/auth/signup' && $method === 'POST') {
 
     $stmt = $pdo->prepare(
         'INSERT INTO users (name, email, password_hash) VALUES (:name, :email, :hash)
-         RETURNING id, name, email, subscription_tier, is_admin, email_verified, trial_ends_at, trial_used, ' . USER_ACTIVE_SQL
+         RETURNING id, name, email, subscription_tier, is_admin, email_verified'
     );
     $stmt->execute([
         'name' => $name,
@@ -126,8 +123,7 @@ if ($path === 'api/auth/login' && $method === 'POST') {
     }
 
     $stmt = $pdo->prepare(
-        'SELECT id, name, email, password_hash, subscription_tier, is_admin, email_verified, locked_until,
-                trial_ends_at, trial_used, ' . USER_ACTIVE_SQL . '
+        'SELECT id, name, email, password_hash, subscription_tier, is_admin, email_verified, locked_until
          FROM users WHERE email = :email'
     );
     $stmt->execute(['email' => $email]);
@@ -191,8 +187,17 @@ if ($path === 'api/auth/verify-email' && $method === 'POST') {
         echo json_encode(['error' => 'That code is invalid or has expired.']);
         exit;
     }
+    // Only send the welcome email the first time this account is verified --
+    // requireAuth() gave us the pre-update row, so email_verified here still
+    // reflects the state before this request.
+    $wasAlreadyVerified = $user['email_verified'] === true || $user['email_verified'] === 't';
+
     $update = $pdo->prepare('UPDATE users SET email_verified = TRUE WHERE id = :id');
     $update->execute(['id' => $user['id']]);
+
+    if (!$wasAlreadyVerified) {
+        sendEmail($user['email'], 'Welcome to IKKO Academy', welcomeEmailHtml($user['name']));
+    }
 
     echo json_encode(['ok' => true]);
     exit;
@@ -334,37 +339,16 @@ if ($path === 'api/content' && $method === 'GET') {
     exit;
 }
 
-if ($path === 'api/events' && $method === 'GET') {
-    $stmt = $pdo->query(
-        'SELECT id, title, description, event_date, location, image_url, link_url
-         FROM events ORDER BY (event_date IS NULL), event_date ASC, sort_order ASC'
-    );
-    $events = array_map(function ($row) {
-        return [
-            'id' => (int) $row['id'],
-            'title' => $row['title'],
-            'description' => $row['description'],
-            'eventDate' => $row['event_date'],
-            'location' => $row['location'],
-            'imageUrl' => $row['image_url'],
-            'linkUrl' => $row['link_url'],
-        ];
-    }, $stmt->fetchAll(PDO::FETCH_ASSOC));
-    echo json_encode($events);
-    exit;
-}
-
 /* ============================================================
    SUBSCRIPTIONS & PAYMENTS
    ============================================================ */
 
-// The 7-day free trial -- no payment required, so there's nothing for
-// Stripe to verify. Enforced server-side as one-time-use per account.
+// Free tier only -- no payment required, so there's nothing for Stripe to verify.
 if ($path === 'api/subscriptions' && $method === 'POST') {
     $user = requireAuth($pdo);
     $tierSlug = body()['tierSlug'] ?? '';
 
-    $tierStmt = $pdo->prepare('SELECT slug, price_cents, trial_days FROM tiers WHERE slug = :slug');
+    $tierStmt = $pdo->prepare('SELECT slug, price_cents FROM tiers WHERE slug = :slug');
     $tierStmt->execute(['slug' => $tierSlug]);
     $tier = $tierStmt->fetch(PDO::FETCH_ASSOC);
 
@@ -378,21 +362,12 @@ if ($path === 'api/subscriptions' && $method === 'POST') {
         echo json_encode(['error' => 'Paid tiers must go through checkout.', 'requiresCheckout' => true]);
         exit;
     }
-    if (toBool($user['trial_used'])) {
-        http_response_code(409);
-        echo json_encode(['error' => "You've already used your free trial. Choose a paid plan to continue."]);
-        exit;
-    }
 
-    $trialDays = (int) ($tier['trial_days'] ?? 7);
     $update = $pdo->prepare(
-        "UPDATE users
-         SET subscription_tier = :tier, subscribed_at = NOW(),
-             trial_ends_at = NOW() + (:days || ' days')::interval, trial_used = TRUE
-         WHERE id = :id
-         RETURNING id, name, email, subscription_tier, is_admin, email_verified, trial_ends_at, trial_used, " . USER_ACTIVE_SQL
+        'UPDATE users SET subscription_tier = :tier, subscribed_at = NOW() WHERE id = :id
+         RETURNING id, name, email, subscription_tier, is_admin, email_verified'
     );
-    $update->execute(['tier' => $tierSlug, 'days' => $trialDays, 'id' => $user['id']]);
+    $update->execute(['tier' => $tierSlug, 'id' => $user['id']]);
     echo json_encode(['user' => publicUser($update->fetch(PDO::FETCH_ASSOC))]);
     exit;
 }
@@ -555,76 +530,6 @@ if (preg_match('#^api/admin/videos/(\d+)$#', $path, $m) && in_array($method, ['P
         exit;
     }
     $stmt = $pdo->prepare('UPDATE videos SET ' . implode(', ', $sets) . ' WHERE id = :id');
-    $stmt->execute($params);
-    echo json_encode(['ok' => true]);
-    exit;
-}
-
-/* ============================================================
-   ADMIN: events management
-   ============================================================ */
-
-if ($path === 'api/admin/events' && $method === 'POST') {
-    requireAdmin($pdo);
-    $d = body();
-
-    $title = trim($d['title'] ?? '');
-    if ($title === '') {
-        http_response_code(400);
-        echo json_encode(['error' => 'Title is required.']);
-        exit;
-    }
-
-    $stmt = $pdo->prepare(
-        'INSERT INTO events (title, description, event_date, location, image_url, link_url, sort_order)
-         VALUES (:title, :description, NULLIF(:date, \'\')::date, :location, :image, :link, :sort)
-         RETURNING id'
-    );
-    $stmt->execute([
-        'title' => $title,
-        'description' => trim($d['description'] ?? ''),
-        'date' => trim($d['eventDate'] ?? ''),
-        'location' => trim($d['location'] ?? ''),
-        'image' => trim($d['imageUrl'] ?? ''),
-        'link' => trim($d['linkUrl'] ?? ''),
-        'sort' => (int) ($d['sortOrder'] ?? 999),
-    ]);
-    echo json_encode(['id' => (int) $stmt->fetchColumn()]);
-    exit;
-}
-
-if (preg_match('#^api/admin/events/(\d+)$#', $path, $m) && in_array($method, ['PUT', 'DELETE'], true)) {
-    requireAdmin($pdo);
-    $id = (int) $m[1];
-
-    if ($method === 'DELETE') {
-        $stmt = $pdo->prepare('DELETE FROM events WHERE id = :id');
-        $stmt->execute(['id' => $id]);
-        echo json_encode(['ok' => true]);
-        exit;
-    }
-
-    $d = body();
-    $fields = ['title' => 'title', 'description' => 'description', 'location' => 'location',
-               'image_url' => 'imageUrl', 'link_url' => 'linkUrl', 'sort_order' => 'sortOrder'];
-    $sets = [];
-    $params = ['id' => $id];
-    foreach ($fields as $col => $jsonKey) {
-        if (array_key_exists($jsonKey, $d)) {
-            $sets[] = "$col = :$col";
-            $params[$col] = $d[$jsonKey];
-        }
-    }
-    if (array_key_exists('eventDate', $d)) {
-        $sets[] = "event_date = NULLIF(:event_date, '')::date";
-        $params['event_date'] = $d['eventDate'];
-    }
-    if (empty($sets)) {
-        http_response_code(400);
-        echo json_encode(['error' => 'No fields to update.']);
-        exit;
-    }
-    $stmt = $pdo->prepare('UPDATE events SET ' . implode(', ', $sets) . ' WHERE id = :id');
     $stmt->execute($params);
     echo json_encode(['ok' => true]);
     exit;

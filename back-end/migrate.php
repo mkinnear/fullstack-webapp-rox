@@ -193,7 +193,9 @@ if ($eventCount == 0) {
     $pdo->exec("INSERT INTO events (title, description, event_date, location, sort_order) VALUES
         ('Autumn Grading Day', 'Belt grading for all ranks, open to spectators. Arrive 30 minutes early to warm up.', CURRENT_DATE + INTERVAL '21 days', 'Main Dojo', 1),
         ('Kata & Bunkai Masterclass', 'A focused half-day masterclass breaking down application for the Heian series.', CURRENT_DATE + INTERVAL '35 days', 'Main Dojo', 2),
-        ('Inter-Dojo Friendly Tournament', 'Light-contact kumite tournament, all belts welcome. Team sign-up closes one week prior.', CURRENT_DATE + INTERVAL '50 days', 'Regional Sports Hall', 3)");
+        ('Inter-Dojo Friendly Tournament', 'Light-contact kumite tournament, all belts welcome. Team sign-up closes one week prior.', CURRENT_DATE + INTERVAL '50 days', 'Regional Sports Hall', 3),
+        ('Junior Students Open Day', 'A free taster session for new junior students aged 6-12. No experience required.', CURRENT_DATE + INTERVAL '10 days', 'Main Dojo', 4),
+        ('Shihan Seminar Weekend', 'Two-day intensive seminar covering advanced kata and instructor-level teaching methods.', CURRENT_DATE + INTERVAL '70 days', 'Regional Sports Hall', 5)");
 }
 
 // Seed content blocks only if empty.
@@ -203,6 +205,8 @@ if ($contentCount == 0) {
     $defaults = [
         'philosophy_divider_label' => 'IKKO Academy Philosophy',
         'events_divider_label' => 'New & Upcoming Events',
+        'hero_divider_label' => 'Train With Intent',
+        'membership_divider_label' => 'Join IKKO Academy',
         'about_eyebrow' => 'Who we are',
         'about_title' => 'ABOUT IKKO ACADEMY',
         'about_body' => 'IKKO Academy is the official digital dojo of the International Kenbukai Karate & Kobudo Federation — every kihon, kata, kumite and conditioning lesson taught in order, by real instructors, so you train with the same structure and correction as students on the mat.',
