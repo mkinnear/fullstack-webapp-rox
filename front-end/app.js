@@ -595,18 +595,17 @@ function renderAuthModal() {
 
 async function handleAuthSubmit(e) {
   e.preventDefault();
+  const isSignup = state.authMode === "signup";
+  const name = isSignup ? document.getElementById("field-name").value.trim() : null;
   const email = document.getElementById("field-email").value.trim();
   const password = document.getElementById("field-password").value;
-  const isSignup = state.authMode === "signup";
 
   state.authBusy = true;
   state.authError = "";
   renderAuthModal();
 
   try {
-    const payload = isSignup
-      ? { name: document.getElementById("field-name").value.trim(), email, password }
-      : { email, password };
+    const payload = isSignup ? { name, email, password } : { email, password };
 
     const data = await api(isSignup ? "/auth/signup" : "/auth/login", {
       method: "POST",
