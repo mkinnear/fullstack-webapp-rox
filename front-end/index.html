@@ -19,10 +19,32 @@
     <nav class="nav-links" id="nav-links">
       <button class="link-btn" id="nav-library">Library</button>
       <button class="link-btn" id="nav-membership">Membership</button>
-      <span id="tier-badge" class="tier-badge hidden"></span>
-      <button class="link-btn" id="nav-signin">Sign in</button>
       <button class="link-btn hidden" id="nav-admin">Admin</button>
+
+      <!-- Logged out -->
+      <button class="link-btn" id="nav-signin">Sign in</button>
       <button class="btn btn-primary" id="nav-join">Join now</button>
+
+      <!-- Logged in -->
+      <div class="account-menu hidden" id="account-menu">
+        <button class="account-icon-btn" id="account-toggle" aria-haspopup="true" aria-expanded="false" aria-label="Account menu">
+          <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="8" r="4"></circle><path d="M4 20c0-4.2 3.6-7 8-7s8 2.8 8 7"></path></svg>
+        </button>
+        <div class="account-dropdown hidden" id="account-dropdown">
+          <div class="account-dropdown-header">
+            <span class="account-name" id="account-name"></span>
+            <span class="account-email" id="account-email"></span>
+            <span class="account-status-line" id="account-status-line"></span>
+          </div>
+          <button class="account-menu-item" id="menu-personal-info">Personal information</button>
+          <button class="account-menu-item" id="menu-manage-account">Manage account</button>
+          <button class="account-menu-item" id="menu-upgrade">Upgrade</button>
+          <button class="account-menu-item hidden" id="menu-hold">Put account on hold</button>
+          <button class="account-menu-item danger" id="menu-delete">Delete account</button>
+          <div class="account-menu-divider"></div>
+          <button class="account-menu-item" id="menu-logout">Log out</button>
+        </div>
+      </div>
     </nav>
     <button class="menu-toggle" id="menu-toggle" aria-label="Toggle menu" aria-expanded="false" aria-controls="nav-links">
       <span></span><span></span><span></span>

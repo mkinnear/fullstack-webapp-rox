@@ -48,8 +48,13 @@ function publicUser(array $user): array {
         'name' => $user['name'],
         'email' => $user['email'],
         'subscriptionTier' => $user['subscription_tier'],
-        'isAdmin' => $user['is_admin'] === true || $user['is_admin'] === 't',
-        'emailVerified' => $user['email_verified'] === true || $user['email_verified'] === 't',
+        'subscriptionActive' => toBool($user['subscription_active'] ?? false),
+        'trialEndsAt' => $user['trial_ends_at'] ?? null,
+        'trialUsed' => toBool($user['trial_used'] ?? false),
+        'accountStatus' => $user['account_status'] ?? 'active',
+        'hasBilling' => !empty($user['stripe_customer_id']),
+        'isAdmin' => toBool($user['is_admin']),
+        'emailVerified' => toBool($user['email_verified']),
     ];
 }
 
@@ -93,7 +98,8 @@ if ($path === 'api/auth/signup' && $method === 'POST') {
 
     $stmt = $pdo->prepare(
         'INSERT INTO users (name, email, password_hash) VALUES (:name, :email, :hash)
-         RETURNING id, name, email, subscription_tier, is_admin, email_verified'
+         RETURNING id, name, email, subscription_tier, is_admin, email_verified, trial_ends_at, trial_used,
+                account_status, stripe_customer_id, stripe_subscription_id, ' . USER_ACTIVE_SQL
     );
     $stmt->execute([
         'name' => $name,
@@ -123,7 +129,8 @@ if ($path === 'api/auth/login' && $method === 'POST') {
     }
 
     $stmt = $pdo->prepare(
-        'SELECT id, name, email, password_hash, subscription_tier, is_admin, email_verified, locked_until
+        'SELECT id, name, email, password_hash, subscription_tier, is_admin, email_verified, locked_until,
+                trial_ends_at, trial_used, account_status, stripe_customer_id, stripe_subscription_id, ' . USER_ACTIVE_SQL . '
          FROM users WHERE email = :email'
     );
     $stmt->execute(['email' => $email]);
@@ -339,6 +346,26 @@ if ($path === 'api/content' && $method === 'GET') {
     exit;
 }
 
+if ($path === 'api/events' && $method === 'GET') {
+    $stmt = $pdo->query(
+        'SELECT id, title, description, event_date, location, image_url, link_url
+         FROM events ORDER BY (event_date IS NULL), event_date ASC, sort_order ASC'
+    );
+    $events = array_map(function ($row) {
+        return [
+            'id' => (int) $row['id'],
+            'title' => $row['title'],
+            'description' => $row['description'],
+            'eventDate' => $row['event_date'],
+            'location' => $row['location'],
+            'imageUrl' => $row['image_url'],
+            'linkUrl' => $row['link_url'],
+        ];
+    }, $stmt->fetchAll(PDO::FETCH_ASSOC));
+    echo json_encode($events);
+    exit;
+}
+
 /* ============================================================
    SUBSCRIPTIONS & PAYMENTS
    ============================================================ */
@@ -348,7 +375,7 @@ if ($path === 'api/subscriptions' && $method === 'POST') {
     $user = requireAuth($pdo);
     $tierSlug = body()['tierSlug'] ?? '';
 
-    $tierStmt = $pdo->prepare('SELECT slug, price_cents FROM tiers WHERE slug = :slug');
+    $tierStmt = $pdo->prepare('SELECT slug, price_cents, trial_days FROM tiers WHERE slug = :slug');
     $tierStmt->execute(['slug' => $tierSlug]);
     $tier = $tierStmt->fetch(PDO::FETCH_ASSOC);
 
@@ -362,12 +389,22 @@ if ($path === 'api/subscriptions' && $method === 'POST') {
         echo json_encode(['error' => 'Paid tiers must go through checkout.', 'requiresCheckout' => true]);
         exit;
     }
+    if (toBool($user['trial_used'])) {
+        http_response_code(409);
+        echo json_encode(['error' => "You've already used your free trial. Choose a paid plan to continue."]);
+        exit;
+    }
 
+    $trialDays = (int) ($tier['trial_days'] ?? 7);
     $update = $pdo->prepare(
-        'UPDATE users SET subscription_tier = :tier, subscribed_at = NOW() WHERE id = :id
-         RETURNING id, name, email, subscription_tier, is_admin, email_verified'
+        "UPDATE users
+         SET subscription_tier = :tier, subscribed_at = NOW(),
+             trial_ends_at = NOW() + (:days || ' days')::interval, trial_used = TRUE
+         WHERE id = :id
+         RETURNING id, name, email, subscription_tier, is_admin, email_verified, trial_ends_at, trial_used,
+                account_status, stripe_customer_id, stripe_subscription_id, " . USER_ACTIVE_SQL
     );
-    $update->execute(['tier' => $tierSlug, 'id' => $user['id']]);
+    $update->execute(['tier' => $tierSlug, 'days' => $trialDays, 'id' => $user['id']]);
     echo json_encode(['user' => publicUser($update->fetch(PDO::FETCH_ASSOC))]);
     exit;
 }
@@ -418,8 +455,17 @@ if ($path === 'api/webhooks/stripe' && $method === 'POST') {
         $tierSlug = $session['metadata']['tier_slug'] ?? null;
 
         if ($userId && $tierSlug) {
-            $update = $pdo->prepare('UPDATE users SET subscription_tier = :tier, subscribed_at = NOW(), stripe_customer_id = :cust WHERE id = :id');
-            $update->execute(['tier' => $tierSlug, 'cust' => $session['customer'] ?? null, 'id' => $userId]);
+            $update = $pdo->prepare(
+                'UPDATE users SET subscription_tier = :tier, subscribed_at = NOW(),
+                 stripe_customer_id = :cust, stripe_subscription_id = :sub, account_status = \'active\'
+                 WHERE id = :id'
+            );
+            $update->execute([
+                'tier' => $tierSlug,
+                'cust' => $session['customer'] ?? null,
+                'sub' => $session['subscription'] ?? null,
+                'id' => $userId,
+            ]);
 
             $tierRow = $pdo->prepare('SELECT price_cents FROM tiers WHERE slug = :slug');
             $tierRow->execute(['slug' => $tierSlug]);
@@ -435,6 +481,86 @@ if ($path === 'api/webhooks/stripe' && $method === 'POST') {
     }
 
     echo json_encode(['received' => true]);
+    exit;
+}
+
+/* ============================================================
+   ACCOUNT MANAGEMENT
+   ============================================================ */
+
+if ($path === 'api/account/billing-portal' && $method === 'POST') {
+    $user = requireAuth($pdo);
+    if (empty($user['stripe_customer_id'])) {
+        http_response_code(400);
+        echo json_encode(['error' => 'No billing account yet -- subscribe to a paid plan first.']);
+        exit;
+    }
+    $result = createBillingPortalSession($user['stripe_customer_id']);
+    if (isset($result['error'])) {
+        http_response_code(502);
+        echo json_encode(['error' => $result['error']]);
+        exit;
+    }
+    echo json_encode($result);
+    exit;
+}
+
+if ($path === 'api/account/pause' && $method === 'POST') {
+    $user = requireAuth($pdo);
+    if (empty($user['stripe_subscription_id'])) {
+        http_response_code(400);
+        echo json_encode(['error' => 'No active paid subscription to pause.']);
+        exit;
+    }
+    $result = pauseStripeSubscription($user['stripe_subscription_id']);
+    if (isset($result['error'])) {
+        http_response_code(502);
+        echo json_encode(['error' => $result['error']]);
+        exit;
+    }
+    $update = $pdo->prepare('UPDATE users SET account_status = \'paused\' WHERE id = :id');
+    $update->execute(['id' => $user['id']]);
+    echo json_encode(['ok' => true]);
+    exit;
+}
+
+if ($path === 'api/account/resume' && $method === 'POST') {
+    $user = requireAuth($pdo);
+    if (empty($user['stripe_subscription_id'])) {
+        http_response_code(400);
+        echo json_encode(['error' => 'No subscription to resume.']);
+        exit;
+    }
+    $result = resumeStripeSubscription($user['stripe_subscription_id']);
+    if (isset($result['error'])) {
+        http_response_code(502);
+        echo json_encode(['error' => $result['error']]);
+        exit;
+    }
+    $update = $pdo->prepare('UPDATE users SET account_status = \'active\' WHERE id = :id');
+    $update->execute(['id' => $user['id']]);
+    echo json_encode(['ok' => true]);
+    exit;
+}
+
+// Cancels any live Stripe subscription FIRST, so deleting an account can
+// never leave someone getting billed for a service they can no longer log
+// into. The user row is deleted last, and cascades to sessions/otp_codes.
+if ($path === 'api/account' && $method === 'DELETE') {
+    $user = requireAuth($pdo);
+
+    if (!empty($user['stripe_subscription_id'])) {
+        $cancel = cancelStripeSubscription($user['stripe_subscription_id']);
+        if (isset($cancel['error'])) {
+            http_response_code(502);
+            echo json_encode(['error' => 'Could not cancel your subscription automatically: ' . $cancel['error'] . '. Please contact support before deleting your account.']);
+            exit;
+        }
+    }
+
+    $stmt = $pdo->prepare('DELETE FROM users WHERE id = :id');
+    $stmt->execute(['id' => $user['id']]);
+    echo json_encode(['ok' => true]);
     exit;
 }
 

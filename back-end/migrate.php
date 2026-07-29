@@ -14,6 +14,8 @@ $pdo->exec("CREATE TABLE IF NOT EXISTS users (
     subscription_tier TEXT,
     subscribed_at TIMESTAMP,
     stripe_customer_id TEXT,
+    stripe_subscription_id TEXT,
+    account_status TEXT NOT NULL DEFAULT 'active',
     failed_login_attempts INT NOT NULL DEFAULT 0,
     locked_until TIMESTAMP,
     created_at TIMESTAMP DEFAULT NOW()
@@ -23,6 +25,8 @@ $pdo->exec("CREATE TABLE IF NOT EXISTS users (
 $userCols = ['is_admin' => 'BOOLEAN NOT NULL DEFAULT FALSE',
              'email_verified' => 'BOOLEAN NOT NULL DEFAULT FALSE',
              'stripe_customer_id' => 'TEXT',
+             'stripe_subscription_id' => 'TEXT',
+             'account_status' => "TEXT NOT NULL DEFAULT 'active'",
              'failed_login_attempts' => 'INT NOT NULL DEFAULT 0',
              'locked_until' => 'TIMESTAMP',
              'trial_ends_at' => 'TIMESTAMP',

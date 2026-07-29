@@ -40,6 +40,56 @@ function createStripeCheckoutSession(array $user, array $tier): array {
     return ['url' => $response['url'] ?? null, 'id' => $response['id'] ?? null];
 }
 
+/**
+ * Creates a Stripe Billing Portal session -- a hosted page where the
+ * customer can update payment methods, view invoices, or cancel. We never
+ * build this UI ourselves, same reasoning as checkout: Stripe owns
+ * anything involving live payment method data.
+ */
+function createBillingPortalSession(string $stripeCustomerId): array {
+    $secretKey = getenv('STRIPE_SECRET_KEY');
+    $frontendUrl = getenv('FRONTEND_URL');
+    if (!$secretKey) {
+        return ['error' => 'Payments are not configured yet.'];
+    }
+    $response = stripeRequest('POST', '/v1/billing_portal/sessions', [
+        'customer' => $stripeCustomerId,
+        'return_url' => $frontendUrl . '/',
+    ], $secretKey);
+    if (isset($response['error'])) {
+        return ['error' => $response['error']['message'] ?? 'Stripe request failed.'];
+    }
+    return ['url' => $response['url'] ?? null];
+}
+
+/** Pauses billing on a subscription without cancelling it outright. */
+function pauseStripeSubscription(string $subscriptionId): array {
+    $secretKey = getenv('STRIPE_SECRET_KEY');
+    if (!$secretKey) return ['error' => 'Payments are not configured yet.'];
+    $response = stripeRequest('POST', "/v1/subscriptions/$subscriptionId", [
+        'pause_collection' => ['behavior' => 'void'],
+    ], $secretKey);
+    return isset($response['error']) ? ['error' => $response['error']['message'] ?? 'Stripe request failed.'] : ['ok' => true];
+}
+
+/** Resumes a previously paused subscription. */
+function resumeStripeSubscription(string $subscriptionId): array {
+    $secretKey = getenv('STRIPE_SECRET_KEY');
+    if (!$secretKey) return ['error' => 'Payments are not configured yet.'];
+    $response = stripeRequest('POST', "/v1/subscriptions/$subscriptionId", [
+        'pause_collection' => '',
+    ], $secretKey);
+    return isset($response['error']) ? ['error' => $response['error']['message'] ?? 'Stripe request failed.'] : ['ok' => true];
+}
+
+/** Cancels a subscription outright -- used when an account is deleted, so nobody keeps getting billed. */
+function cancelStripeSubscription(string $subscriptionId): array {
+    $secretKey = getenv('STRIPE_SECRET_KEY');
+    if (!$secretKey) return ['error' => 'Payments are not configured yet.'];
+    $response = stripeRequest('DELETE', "/v1/subscriptions/$subscriptionId", [], $secretKey);
+    return isset($response['error']) ? ['error' => $response['error']['message'] ?? 'Stripe request failed.'] : ['ok' => true];
+}
+
 /** Minimal Stripe REST client using cURL and application/x-www-form-urlencoded (Stripe's expected format). */
 function stripeRequest(string $method, string $path, array $params, string $secretKey): array {
     $ch = curl_init('https://api.stripe.com' . $path);
