@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>IKKO Academy — My Dashboard</title>
+<link rel="stylesheet" href="style.css" />
+<link rel="stylesheet" href="dashboard.css" />
+<link rel="icon" type="image/x-icon" href="assets/favicon.ico">
+</head>
+<body>
+
+<!-- NAV -->
+<header class="site-header">
+  <div class="wrap header-inner">
+    <div class="logo" id="nav-home">
+      <img src="assets/favicon-96x96.png" alt="IKKO Academy Logo" class="logo-icon">
+      IKKO ACADEMY
+    </div>
+    <nav class="nav-links" id="nav-links">
+      <a class="link-btn" href="index.html">Site</a>
+      <a class="link-btn" href="index.html#membership">Membership</a>
+      <span id="tier-badge" class="tier-badge hidden"></span>
+      <button class="link-btn hidden" id="nav-admin">Admin</button>
+      <button class="link-btn" id="nav-signout">Sign out</button>
+    </nav>
+    <button class="menu-toggle" id="menu-toggle" aria-label="Toggle menu" aria-expanded="false" aria-controls="nav-links">
+      <span></span><span></span><span></span>
+    </button>
+  </div>
+</header>
+
+<!-- SIGNED-OUT GATE -->
+<section class="wrap section" id="signed-out-gate" style="display:none;">
+  <div class="section-head center">
+    <p class="eyebrow">My Dashboard</p>
+    <h2 class="disp section-title">SIGN IN TO CONTINUE</h2>
+    <p style="color:var(--muted);max-width:420px;text-align:center;">Your dashboard, belt progress and training guides are waiting — sign in from the main site to pick up where you left off.</p>
+  </div>
+  <div style="text-align:center;margin-top:12px;">
+    <a class="btn btn-primary" href="index.html">Go to sign in</a>
+  </div>
+</section>
+
+<main id="dash-root" style="display:none;">
+
+  <!-- PROFILE / PROGRESS HEADER -->
+  <section class="dash-hero" id="dash-hero">
+    <div class="dash-hero-belt-bg" id="dash-hero-belt-bg"></div>
+    <div class="wrap dash-hero-inner">
+      <div class="dash-hero-top">
+        <div>
+          <p class="eyebrow" id="dash-member-since">Member</p>
+          <h1 class="disp dash-hero-name" id="dash-user-name">STUDENT</h1>
+        </div>
+        <div class="dash-belt-pill" id="dash-belt-pill">
+          <span class="dash-belt-swatch" id="dash-belt-swatch"></span>
+          <span id="dash-belt-label">White Belt</span>
+        </div>
+      </div>
+
+      <div class="dash-progress-panel">
+        <div class="dash-pathway" id="dash-pathway"></div>
+
+        <div class="dash-progress-stats">
+          <div class="dash-stat">
+            <span class="dash-stat-label">Next grading</span>
+            <span class="dash-stat-value" id="dash-next-grading">Not yet scheduled</span>
+          </div>
+          <div class="dash-stat">
+            <span class="dash-stat-label">Working toward</span>
+            <span class="dash-stat-value" id="dash-target-belt">—</span>
+          </div>
+          <div class="dash-stat">
+            <span class="dash-stat-label">Lessons on this rank</span>
+            <span class="dash-stat-value" id="dash-lesson-count">0 / 0</span>
+          </div>
+        </div>
+
+        <div class="dash-bar-track">
+          <div class="dash-bar-fill" id="dash-bar-fill"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- QUICK JUMP -->
+  <nav class="dash-quicknav">
+    <div class="wrap dash-quicknav-inner">
+      <button class="pill" data-jump="announcements">News</button>
+      <button class="pill" data-jump="live">Live Training</button>
+      <button class="pill" data-jump="library">Lesson Library</button>
+      <button class="pill" data-jump="guides">Training Guides</button>
+      <button class="pill" data-jump="grading">Grading Prep</button>
+      <button class="pill" data-jump="terminology">Terminology</button>
+      <button class="pill" data-jump="philosophy">Budo Philosophy</button>
+      <button class="pill" data-jump="instructor">Instructor Dev</button>
+    </div>
+  </nav>
+
+  <!-- ANNOUNCEMENTS -->
+  <section class="wrap section dash-section" id="announcements">
+    <div class="section-head">
+      <div>
+        <p class="eyebrow">Dojo news</p>
+        <h2 class="disp section-title">ANNOUNCEMENTS</h2>
+      </div>
+    </div>
+    <div id="announcements-list" class="announcement-list"></div>
+  </section>
+
+  <!-- LIVE TRAINING -->
+  <section class="section-alt dash-section" id="live">
+    <div class="wrap section">
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">This month</p>
+          <h2 class="disp section-title">LIVE ONLINE TRAINING</h2>
+        </div>
+        <p class="section-note">Scheduled sessions run by IKKO instructors. Join live or catch the recording after in the library below.</p>
+      </div>
+      <div id="live-list" class="live-list"></div>
+    </div>
+  </section>
+
+  <!-- RECORDED LESSON LIBRARY / BELT CURRICULUM -->
+  <section class="wrap section dash-section" id="library">
+    <div class="section-head">
+      <div>
+        <p class="eyebrow">Your curriculum</p>
+        <h2 class="disp section-title">RECORDED LESSON LIBRARY</h2>
+      </div>
+      <p class="section-note">Defaults to your current rank. Switch belts to preview what's ahead, or drop back to revisit fundamentals.</p>
+    </div>
+    <div class="filter-row" id="dash-belt-filters"></div>
+    <div class="filter-row" id="dash-type-filters"></div>
+    <div class="video-grid" id="dash-video-grid"></div>
+    <p class="empty-note hidden" id="dash-empty-note">No lessons match this combination yet.</p>
+  </section>
+
+  <!-- TRAINING GUIDES -->
+  <section class="section-alt dash-section" id="guides">
+    <div class="wrap section">
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">Downloadable</p>
+          <h2 class="disp section-title">TRAINING GUIDES</h2>
+        </div>
+        <p class="section-note">PDF references you can print or keep on your phone for the mat.</p>
+      </div>
+      <div class="guide-grid" id="guide-grid"></div>
+    </div>
+  </section>
+
+  <!-- GRADING PREP -->
+  <section class="wrap section dash-section" id="grading">
+    <div class="section-head">
+      <div>
+        <p class="eyebrow">Get ready</p>
+        <h2 class="disp section-title">GRADING PREPARATION</h2>
+      </div>
+    </div>
+    <div class="resource-grid" id="grading-grid"></div>
+  </section>
+
+  <!-- TERMINOLOGY -->
+  <section class="section-alt dash-section" id="terminology">
+    <div class="wrap section">
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">Know the words</p>
+          <h2 class="disp section-title">JAPANESE TERMINOLOGY</h2>
+        </div>
+      </div>
+      <div class="resource-grid resource-grid-compact" id="terminology-grid"></div>
+    </div>
+  </section>
+
+  <!-- PHILOSOPHY -->
+  <section class="wrap section dash-section" id="philosophy">
+    <div class="section-head">
+      <div>
+        <p class="eyebrow">Beyond technique</p>
+        <h2 class="disp section-title">BUDO PHILOSOPHY</h2>
+      </div>
+    </div>
+    <div class="resource-grid" id="philosophy-grid"></div>
+  </section>
+
+  <!-- INSTRUCTOR DEVELOPMENT -->
+  <section class="section-alt dash-section" id="instructor">
+    <div class="wrap section">
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">For assistant instructors</p>
+          <h2 class="disp section-title">INSTRUCTOR DEVELOPMENT</h2>
+        </div>
+        <p class="section-note">Unlocked with Advanced Membership.</p>
+      </div>
+      <div class="resource-grid" id="instructor-grid"></div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="site-footer">
+  <div class="wrap footer-inner">
+    <div class="logo small">IKKO ACADEMY</div>
+    <p class="footer-note">White belt to black. No shortcuts.</p>
+  </div>
+</footer>
+
+<div id="modal-root"></div>
+
+<script src="dashboard.js"></script>
+</body>
+</html>

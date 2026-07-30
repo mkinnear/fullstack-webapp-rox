@@ -14,10 +14,12 @@ CREATE TABLE IF NOT EXISTS users (
     trial_ends_at TIMESTAMP,
     trial_used BOOLEAN NOT NULL DEFAULT FALSE,
     stripe_customer_id TEXT,
-    stripe_subscription_id TEXT,
-    account_status TEXT NOT NULL DEFAULT 'active',
     failed_login_attempts INT NOT NULL DEFAULT 0,
     locked_until TIMESTAMP,
+    current_belt TEXT NOT NULL DEFAULT 'white',
+    stripes INT NOT NULL DEFAULT 0,
+    next_grading_date DATE,
+    target_belt TEXT,
     created_at TIMESTAMP DEFAULT NOW()
 );
 
@@ -109,6 +111,59 @@ CREATE TABLE IF NOT EXISTS content_blocks (
     updated_at TIMESTAMP DEFAULT NOW()
 );
 
+-- Tracks which recorded lessons a student has marked complete (dashboard progress).
+CREATE TABLE IF NOT EXISTS lesson_progress (
+    user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    video_id INT NOT NULL REFERENCES videos(id) ON DELETE CASCADE,
+    completed_at TIMESTAMP DEFAULT NOW(),
+    PRIMARY KEY (user_id, video_id)
+);
+
+-- Downloadable PDF training guides, shown on the student dashboard.
+CREATE TABLE IF NOT EXISTS guides (
+    id SERIAL PRIMARY KEY,
+    belt_slug TEXT NOT NULL DEFAULT 'all',
+    title TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    file_url TEXT NOT NULL DEFAULT '',
+    premium BOOLEAN NOT NULL DEFAULT TRUE,
+    sort_order INT NOT NULL DEFAULT 0,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Admin-posted announcements/news shown on the student dashboard.
+CREATE TABLE IF NOT EXISTS announcements (
+    id SERIAL PRIMARY KEY,
+    title TEXT NOT NULL,
+    body TEXT NOT NULL DEFAULT '',
+    pinned BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Scheduled live online training sessions.
+CREATE TABLE IF NOT EXISTS live_sessions (
+    id SERIAL PRIMARY KEY,
+    title TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    instructor TEXT NOT NULL DEFAULT '',
+    session_at TIMESTAMP NOT NULL,
+    duration_minutes INT NOT NULL DEFAULT 60,
+    join_url TEXT NOT NULL DEFAULT '',
+    belt_slug TEXT NOT NULL DEFAULT 'all',
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Terminology / philosophy / instructor-development / grading-prep cards.
+CREATE TABLE IF NOT EXISTS resources (
+    id SERIAL PRIMARY KEY,
+    category TEXT NOT NULL, -- 'terminology' | 'philosophy' | 'instructor' | 'grading'
+    title TEXT NOT NULL,
+    body TEXT NOT NULL DEFAULT '',
+    link_url TEXT NOT NULL DEFAULT '',
+    premium BOOLEAN NOT NULL DEFAULT FALSE,
+    sort_order INT NOT NULL DEFAULT 0
+);
+
 -- Records of completed Stripe payments, for audit/reconciliation.
 CREATE TABLE IF NOT EXISTS payments (
     id SERIAL PRIMARY KEY,
@@ -164,6 +219,43 @@ INSERT INTO videos (belt_slug, lesson_number, type, title, caption, duration, in
     ('brown', 1, 'Kata', 'Bassai Dai, Full Breakdown', 'One of the most demanding kata before black belt.', '21:00', 'Sensei Rina Aoki', TRUE, 14),
     ('brown', 2, 'Kumite', 'Pre-Grading Sparring Strategy', 'Preparing your sparring for a black belt grading panel.', '24:35', 'Sensei Marcus Diallo', TRUE, 15),
     ('black', 1, 'Kihon', 'Black Belt Mindset: The Long Game', 'Black belt is the beginning, not the end.', '12:50', 'Sensei Kenji Ohta', TRUE, 16);
+
+INSERT INTO guides (belt_slug, title, description, file_url, premium, sort_order) VALUES
+    ('white', 'White Belt Study Guide', 'Stances, blocks and Heian Shodan reference sheet for new students.', '', FALSE, 1),
+    ('all', 'Japanese Terminology Handbook', 'Every term used on the mat, grouped by category, with pronunciation notes.', '', TRUE, 2),
+    ('all', 'Grading Day: What To Expect', 'Format, etiquette and marking criteria for your next grading.', '', TRUE, 3),
+    ('blue', 'Blue Belt Curriculum Pack', 'Full syllabus notes for blue belt kumite and bunkai requirements.', '', TRUE, 4),
+    ('black', 'Instructor Development Workbook', 'Lesson-planning and correction frameworks for assistant instructors.', '', TRUE, 5);
+
+INSERT INTO announcements (title, body, pinned) VALUES
+    ('Welcome to the new Student Dashboard', 'Track your belt progress, book onto live sessions and download training guides all in one place.', TRUE),
+    ('Autumn grading dates confirmed', 'Grading day registrations are now open — check the Grading Prep section for the full schedule and criteria.', FALSE),
+    ('New Bunkai series added', 'Fresh application breakdowns for the Heian series are now live in the recorded lesson library.', FALSE);
+
+INSERT INTO live_sessions (title, description, instructor, session_at, duration_minutes, belt_slug) VALUES
+    ('Live Kihon Fundamentals', 'A guided run-through of this month''s core basics, open to all ranks.', 'Sensei Rina Aoki', NOW() + INTERVAL '3 days' + TIME '18:00:00', 60, 'all'),
+    ('Grading Prep Clinic', 'Focused corrections for students grading this term.', 'Sensei Kenji Ohta', NOW() + INTERVAL '9 days' + TIME '17:30:00', 90, 'all'),
+    ('Instructor Development Q&A', 'Monthly session on lesson planning and giving corrections.', 'Shihan', NOW() + INTERVAL '16 days' + TIME '19:00:00', 60, 'black');
+
+INSERT INTO resources (category, title, body, premium, sort_order) VALUES
+    ('terminology', 'Dojo', 'The training hall — treated as a place of focus and respect from the moment you step in.', FALSE, 1),
+    ('terminology', 'Sensei', 'Teacher — literally ''one who has gone before.''', FALSE, 2),
+    ('terminology', 'Kihon', 'Basics — the fundamental stances, strikes and blocks everything else is built from.', FALSE, 3),
+    ('terminology', 'Kata', 'A fixed sequence of movements against imaginary opponents, practiced solo.', FALSE, 4),
+    ('terminology', 'Kumite', 'Sparring — applying technique against a live, moving partner.', TRUE, 5),
+    ('terminology', 'Bunkai', 'Application — unpacking what a kata''s movements mean against a real attack.', TRUE, 6),
+    ('terminology', 'Rei', 'Bow — the mark of respect that opens and closes every class.', FALSE, 7),
+    ('terminology', 'Zanshin', 'Continued awareness — staying alert and composed after a technique lands.', TRUE, 8),
+    ('philosophy', 'Train the basics until they need no thought', 'Advanced technique is just kihon performed under pressure. Return to it often, at every rank.', FALSE, 1),
+    ('philosophy', 'Respect the dojo, respect the process', 'Courtesy toward training partners and instructors is part of the technique, not separate from it.', FALSE, 2),
+    ('philosophy', 'Grade the person, not the calendar', 'A belt marks readiness, not time served. Consistency matters more than speed.', TRUE, 3),
+    ('philosophy', 'Black belt is a beginning', 'Reaching black belt means you now understand enough to keep teaching yourself.', TRUE, 4),
+    ('instructor', 'Giving a correction in one sentence', 'Name the one thing to fix first — a student can only hold one correction at a time.', TRUE, 1),
+    ('instructor', 'Planning a 45-minute class', 'Warm-up, kihon block, one kata or kumite focus, conditioning, cool-down and reflection.', TRUE, 2),
+    ('instructor', 'Watching for fatigue-driven mistakes', 'Late-class errors are usually conditioning gaps, not technique gaps — adjust accordingly.', TRUE, 3),
+    ('grading', 'What examiners look for', 'Stance integrity under fatigue, correct timing, and control — not just memorised sequences.', FALSE, 1),
+    ('grading', 'Two weeks out', 'Shift from learning new material to polishing what you already know.', FALSE, 2),
+    ('grading', 'On the day', 'Arrive early, warm up fully, and treat every technique as if it is being graded — because it is.', FALSE, 3);
 
 INSERT INTO content_blocks (key, value) VALUES
     ('philosophy_divider_label', 'IKKO Academy Philosophy'),

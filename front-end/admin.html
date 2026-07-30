@@ -106,6 +106,81 @@
       <p style="color:var(--muted);font-size:14px;margin-bottom:20px;">Shown as a carousel on the homepage, soonest date first.</p>
       <div id="event-list"></div>
     </section>
+
+    <section class="admin-panel">
+      <h2 class="disp" style="font-size:26px;margin:0 0 4px;">STUDENT BELT &amp; GRADING</h2>
+      <p style="color:var(--muted);font-size:14px;margin-bottom:20px;">Search a student to update their rank, stripes and grading pathway on the dashboard.</p>
+      <form id="user-search-form" class="admin-form-narrow" style="margin-bottom:18px;">
+        <label class="field"><span class="field-label">Search by name or email</span><input class="field-input" id="user-search-input" placeholder="Start typing…" /></label>
+        <button type="submit" class="btn btn-primary">Search</button>
+      </form>
+      <div id="user-search-results"></div>
+    </section>
+
+    <section class="admin-panel">
+      <h2 class="disp" style="font-size:26px;margin:0 0 4px;">ADD A TRAINING GUIDE</h2>
+      <form id="add-guide-form" class="admin-video-form">
+        <label class="field"><span class="field-label">Title</span><input class="field-input" id="ng-title" required /></label>
+        <label class="field"><span class="field-label">Belt</span>
+          <select class="field-input" id="ng-belt">
+            <option value="all">All ranks</option>
+            <option value="white">White</option><option value="yellow">Yellow</option><option value="orange">Orange</option>
+            <option value="green">Green</option><option value="blue">Blue</option><option value="purple">Purple</option>
+            <option value="brown">Brown</option><option value="black">Black</option>
+          </select>
+        </label>
+        <label class="field admin-field-wide"><span class="field-label">Description</span><input class="field-input" id="ng-description" /></label>
+        <label class="field admin-field-wide"><span class="field-label">File URL (PDF link)</span><input class="field-input" id="ng-url" placeholder="https://..." /></label>
+        <label class="field-checkbox"><input type="checkbox" id="ng-premium" checked /> Premium (members only)</label>
+        <button type="submit" class="btn btn-primary">Add guide</button>
+      </form>
+    </section>
+
+    <section class="admin-panel">
+      <h2 class="disp" style="font-size:26px;margin:0 0 4px;">TRAINING GUIDES</h2>
+      <div id="guide-list"></div>
+    </section>
+
+    <section class="admin-panel">
+      <h2 class="disp" style="font-size:26px;margin:0 0 4px;">POST AN ANNOUNCEMENT</h2>
+      <form id="add-announcement-form" class="admin-video-form">
+        <label class="field admin-field-wide"><span class="field-label">Title</span><input class="field-input" id="na-title" required /></label>
+        <label class="field admin-field-wide"><span class="field-label">Body</span><input class="field-input" id="na-body" /></label>
+        <label class="field-checkbox"><input type="checkbox" id="na-pinned" /> Pin to top</label>
+        <button type="submit" class="btn btn-primary">Post</button>
+      </form>
+    </section>
+
+    <section class="admin-panel">
+      <h2 class="disp" style="font-size:26px;margin:0 0 4px;">ANNOUNCEMENTS</h2>
+      <div id="announcement-list"></div>
+    </section>
+
+    <section class="admin-panel">
+      <h2 class="disp" style="font-size:26px;margin:0 0 4px;">SCHEDULE A LIVE SESSION</h2>
+      <form id="add-live-form" class="admin-video-form">
+        <label class="field"><span class="field-label">Title</span><input class="field-input" id="nl-title" required /></label>
+        <label class="field"><span class="field-label">Date &amp; time</span><input class="field-input" id="nl-datetime" type="datetime-local" required /></label>
+        <label class="field"><span class="field-label">Duration (min)</span><input class="field-input" id="nl-duration" type="number" min="15" value="60" /></label>
+        <label class="field"><span class="field-label">Instructor</span><input class="field-input" id="nl-instructor" /></label>
+        <label class="field"><span class="field-label">Focus rank</span>
+          <select class="field-input" id="nl-belt">
+            <option value="all">All ranks</option>
+            <option value="white">White</option><option value="yellow">Yellow</option><option value="orange">Orange</option>
+            <option value="green">Green</option><option value="blue">Blue</option><option value="purple">Purple</option>
+            <option value="brown">Brown</option><option value="black">Black</option>
+          </select>
+        </label>
+        <label class="field admin-field-wide"><span class="field-label">Description</span><input class="field-input" id="nl-description" /></label>
+        <label class="field admin-field-wide"><span class="field-label">Join URL</span><input class="field-input" id="nl-url" placeholder="https://..." /></label>
+        <button type="submit" class="btn btn-primary">Schedule session</button>
+      </form>
+    </section>
+
+    <section class="admin-panel">
+      <h2 class="disp" style="font-size:26px;margin:0 0 4px;">LIVE SESSIONS</h2>
+      <div id="live-session-list"></div>
+    </section>
   </div>
 </main>
 

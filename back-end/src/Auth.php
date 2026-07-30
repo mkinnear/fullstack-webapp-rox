@@ -3,14 +3,6 @@
 const SESSION_LIFETIME_DAYS = 30;
 const OTP_LIFETIME_MINUTES = 10;
 
-// A trial counts as active only while trial_ends_at hasn't passed; a paid
-// tier counts as active as long as it's set AND the account isn't paused.
-// Computed in SQL so it's always consistent with the DB's clock, not PHP's.
-const USER_ACTIVE_SQL = "(
-    (subscription_tier = 'trial' AND trial_ends_at > NOW())
-    OR (subscription_tier IS NOT NULL AND subscription_tier <> 'trial' AND account_status = 'active')
-) AS subscription_active";
-
 /* ---------------- SESSIONS (hashed tokens) ---------------- */
 
 function createSession(PDO $pdo, int $userId): string {
@@ -54,8 +46,8 @@ function getUserFromToken(PDO $pdo, ?string $token): ?array {
     }
     $stmt = $pdo->prepare(
         "SELECT u.id, u.name, u.email, u.subscription_tier, u.is_admin, u.email_verified,
-                u.trial_ends_at, u.trial_used, u.account_status, u.stripe_customer_id, u.stripe_subscription_id,
-                " . USER_ACTIVE_SQL . "
+                u.trial_ends_at, u.trial_used, u.current_belt, u.stripes, u.next_grading_date,
+                u.target_belt, u.created_at
          FROM sessions s
          JOIN users u ON u.id = s.user_id
          WHERE s.token_hash = :hash AND s.expires_at > NOW()"

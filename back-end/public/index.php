@@ -42,24 +42,34 @@ function body(): array {
     return is_array($decoded) ? $decoded : [];
 }
 
+const BELT_ORDER = ['white', 'yellow', 'orange', 'green', 'blue', 'purple', 'brown', 'black'];
+
+function toBool($v): bool {
+    return $v === true || $v === 't';
+}
+
 function publicUser(array $user): array {
+    $tier = $user['subscription_tier'] ?? null;
+    $trialEndsAt = $user['trial_ends_at'] ?? null;
+    $subscriptionActive = $tier !== null
+        && ($tier !== 'trial' || ($trialEndsAt !== null && strtotime($trialEndsAt) > time()));
+
     return [
         'id' => (int) $user['id'],
         'name' => $user['name'],
         'email' => $user['email'],
-        'subscriptionTier' => $user['subscription_tier'],
-        'subscriptionActive' => toBool($user['subscription_active'] ?? false),
-        'trialEndsAt' => $user['trial_ends_at'] ?? null,
-        'trialUsed' => toBool($user['trial_used'] ?? false),
-        'accountStatus' => $user['account_status'] ?? 'active',
-        'hasBilling' => !empty($user['stripe_customer_id']),
+        'subscriptionTier' => $tier,
+        'subscriptionActive' => $subscriptionActive,
+        'trialEndsAt' => $trialEndsAt,
+        'trialUsed' => array_key_exists('trial_used', $user) ? toBool($user['trial_used']) : false,
         'isAdmin' => toBool($user['is_admin']),
         'emailVerified' => toBool($user['email_verified']),
+        'currentBelt' => $user['current_belt'] ?? 'white',
+        'stripes' => isset($user['stripes']) ? (int) $user['stripes'] : 0,
+        'targetBelt' => $user['target_belt'] ?? null,
+        'nextGradingDate' => $user['next_grading_date'] ?? null,
+        'memberSince' => $user['created_at'] ?? null,
     ];
-}
-
-function toBool($v): bool {
-    return $v === true || $v === 't';
 }
 
 // Everything below runs inside a try/catch so an unexpected error returns a
@@ -98,8 +108,8 @@ if ($path === 'api/auth/signup' && $method === 'POST') {
 
     $stmt = $pdo->prepare(
         'INSERT INTO users (name, email, password_hash) VALUES (:name, :email, :hash)
-         RETURNING id, name, email, subscription_tier, is_admin, email_verified, trial_ends_at, trial_used,
-                account_status, stripe_customer_id, stripe_subscription_id, ' . USER_ACTIVE_SQL
+         RETURNING id, name, email, subscription_tier, is_admin, email_verified,
+                   trial_ends_at, trial_used, current_belt, stripes, next_grading_date, target_belt, created_at'
     );
     $stmt->execute([
         'name' => $name,
@@ -130,7 +140,7 @@ if ($path === 'api/auth/login' && $method === 'POST') {
 
     $stmt = $pdo->prepare(
         'SELECT id, name, email, password_hash, subscription_tier, is_admin, email_verified, locked_until,
-                trial_ends_at, trial_used, account_status, stripe_customer_id, stripe_subscription_id, ' . USER_ACTIVE_SQL . '
+                trial_ends_at, trial_used, current_belt, stripes, next_grading_date, target_belt, created_at
          FROM users WHERE email = :email'
     );
     $stmt->execute(['email' => $email]);
@@ -346,23 +356,352 @@ if ($path === 'api/content' && $method === 'GET') {
     exit;
 }
 
-if ($path === 'api/events' && $method === 'GET') {
-    $stmt = $pdo->query(
-        'SELECT id, title, description, event_date, location, image_url, link_url
-         FROM events ORDER BY (event_date IS NULL), event_date ASC, sort_order ASC'
+/* ============================================================
+   STUDENT DASHBOARD
+   ============================================================ */
+
+// Aggregated payload for the dashboard header: belt, grading pathway and
+// recorded-lesson progress for the signed-in student's current belt.
+if ($path === 'api/dashboard' && $method === 'GET') {
+    $user = requireAuth($pdo);
+    $belt = $user['current_belt'] ?? 'white';
+    $beltIndex = array_search($belt, BELT_ORDER, true);
+    $beltIndex = $beltIndex === false ? 0 : $beltIndex;
+    $nextBelt = $beltIndex < count(BELT_ORDER) - 1 ? BELT_ORDER[$beltIndex + 1] : null;
+
+    $totalStmt = $pdo->prepare('SELECT COUNT(*) FROM videos WHERE belt_slug = :belt');
+    $totalStmt->execute(['belt' => $belt]);
+    $totalForBelt = (int) $totalStmt->fetchColumn();
+
+    $doneStmt = $pdo->prepare(
+        'SELECT COUNT(*) FROM lesson_progress lp
+         JOIN videos v ON v.id = lp.video_id
+         WHERE lp.user_id = :uid AND v.belt_slug = :belt'
     );
-    $events = array_map(function ($row) {
+    $doneStmt->execute(['uid' => $user['id'], 'belt' => $belt]);
+    $doneForBelt = (int) $doneStmt->fetchColumn();
+
+    $overallTotal = (int) $pdo->query('SELECT COUNT(*) FROM videos')->fetchColumn();
+    $overallDoneStmt = $pdo->prepare('SELECT COUNT(*) FROM lesson_progress WHERE user_id = :uid');
+    $overallDoneStmt->execute(['uid' => $user['id']]);
+    $overallDone = (int) $overallDoneStmt->fetchColumn();
+
+    echo json_encode([
+        'user' => publicUser($user),
+        'beltOrder' => BELT_ORDER,
+        'progress' => [
+            'currentBelt' => $belt,
+            'beltIndex' => $beltIndex,
+            'totalBelts' => count(BELT_ORDER),
+            'nextBelt' => $nextBelt,
+            'stripes' => (int) ($user['stripes'] ?? 0),
+            'nextGradingDate' => $user['next_grading_date'] ?? null,
+            'targetBelt' => $user['target_belt'] ?? $nextBelt,
+            'lessonsCompletedForBelt' => $doneForBelt,
+            'lessonsTotalForBelt' => $totalForBelt,
+            'lessonsCompletedOverall' => $overallDone,
+            'lessonsTotalOverall' => $overallTotal,
+        ],
+    ]);
+    exit;
+}
+
+if ($path === 'api/guides' && $method === 'GET') {
+    $user = getUserFromToken($pdo, bearerToken());
+    $active = $user ? publicUser($user)['subscriptionActive'] : false;
+
+    $stmt = $pdo->query('SELECT id, belt_slug, title, description, file_url, premium FROM guides ORDER BY sort_order');
+    $guides = array_map(function ($row) use ($active) {
+        $premium = toBool($row['premium']);
+        return [
+            'id' => (int) $row['id'],
+            'belt' => $row['belt_slug'],
+            'title' => $row['title'],
+            'description' => $row['description'],
+            'premium' => $premium,
+            'locked' => $premium && !$active,
+            'fileUrl' => (!$premium || $active) ? $row['file_url'] : null,
+        ];
+    }, $stmt->fetchAll(PDO::FETCH_ASSOC));
+    echo json_encode($guides);
+    exit;
+}
+
+if ($path === 'api/announcements' && $method === 'GET') {
+    $stmt = $pdo->query(
+        'SELECT id, title, body, pinned, created_at FROM announcements ORDER BY pinned DESC, created_at DESC LIMIT 20'
+    );
+    $result = array_map(function ($row) {
+        return [
+            'id' => (int) $row['id'],
+            'title' => $row['title'],
+            'body' => $row['body'],
+            'pinned' => toBool($row['pinned']),
+            'createdAt' => $row['created_at'],
+        ];
+    }, $stmt->fetchAll(PDO::FETCH_ASSOC));
+    echo json_encode($result);
+    exit;
+}
+
+if ($path === 'api/live-sessions' && $method === 'GET') {
+    $stmt = $pdo->query(
+        'SELECT id, title, description, instructor, session_at, duration_minutes, join_url, belt_slug
+         FROM live_sessions WHERE session_at > NOW() - INTERVAL \'2 hours\' ORDER BY session_at ASC LIMIT 20'
+    );
+    $result = array_map(function ($row) {
         return [
             'id' => (int) $row['id'],
             'title' => $row['title'],
             'description' => $row['description'],
-            'eventDate' => $row['event_date'],
-            'location' => $row['location'],
-            'imageUrl' => $row['image_url'],
-            'linkUrl' => $row['link_url'],
+            'instructor' => $row['instructor'],
+            'sessionAt' => $row['session_at'],
+            'durationMinutes' => (int) $row['duration_minutes'],
+            'joinUrl' => $row['join_url'],
+            'belt' => $row['belt_slug'],
         ];
     }, $stmt->fetchAll(PDO::FETCH_ASSOC));
-    echo json_encode($events);
+    echo json_encode($result);
+    exit;
+}
+
+// Terminology / philosophy / grading-prep / instructor-development cards,
+// grouped by category. Instructor-development is gated to advanced members.
+if ($path === 'api/resources' && $method === 'GET') {
+    $user = getUserFromToken($pdo, bearerToken());
+    $pu = $user ? publicUser($user) : null;
+    $active = $pu ? $pu['subscriptionActive'] : false;
+    $isAdvanced = $pu && $pu['subscriptionTier'] === 'advanced' && $active;
+
+    $stmt = $pdo->query('SELECT id, category, title, body, link_url, premium FROM resources ORDER BY category, sort_order');
+    $grouped = [];
+    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $premium = toBool($row['premium']);
+        $isInstructor = $row['category'] === 'instructor';
+        $unlocked = $isInstructor ? $isAdvanced : (!$premium || $active);
+        $grouped[$row['category']][] = [
+            'id' => (int) $row['id'],
+            'title' => $row['title'],
+            'body' => $unlocked ? $row['body'] : null,
+            'linkUrl' => $unlocked ? $row['link_url'] : null,
+            'premium' => $premium || $isInstructor,
+            'locked' => !$unlocked,
+        ];
+    }
+    echo json_encode($grouped);
+    exit;
+}
+
+if (preg_match('#^api/progress/videos/(\d+)$#', $path, $m) && in_array($method, ['POST', 'DELETE'], true)) {
+    $user = requireAuth($pdo);
+    $videoId = (int) $m[1];
+
+    if ($method === 'POST') {
+        $stmt = $pdo->prepare(
+            'INSERT INTO lesson_progress (user_id, video_id) VALUES (:uid, :vid)
+             ON CONFLICT (user_id, video_id) DO NOTHING'
+        );
+        $stmt->execute(['uid' => $user['id'], 'vid' => $videoId]);
+    } else {
+        $stmt = $pdo->prepare('DELETE FROM lesson_progress WHERE user_id = :uid AND video_id = :vid');
+        $stmt->execute(['uid' => $user['id'], 'vid' => $videoId]);
+    }
+    echo json_encode(['ok' => true]);
+    exit;
+}
+
+if ($path === 'api/progress/videos' && $method === 'GET') {
+    $user = requireAuth($pdo);
+    $stmt = $pdo->prepare('SELECT video_id FROM lesson_progress WHERE user_id = :uid');
+    $stmt->execute(['uid' => $user['id']]);
+    echo json_encode(array_map('intval', $stmt->fetchAll(PDO::FETCH_COLUMN)));
+    exit;
+}
+
+/* ============================================================
+   ADMIN: guides, announcements, live sessions, resources, belts
+   ============================================================ */
+
+if ($path === 'api/admin/guides' && $method === 'POST') {
+    requireAdmin($pdo);
+    $d = body();
+    $title = trim($d['title'] ?? '');
+    if ($title === '') {
+        http_response_code(400);
+        echo json_encode(['error' => 'A title is required.']);
+        exit;
+    }
+    $stmt = $pdo->prepare(
+        'INSERT INTO guides (belt_slug, title, description, file_url, premium, sort_order)
+         VALUES (:belt, :title, :description, :url, :premium, :sort) RETURNING id'
+    );
+    $stmt->execute([
+        'belt' => trim($d['belt'] ?? 'all') ?: 'all',
+        'title' => $title,
+        'description' => trim($d['description'] ?? ''),
+        'url' => trim($d['fileUrl'] ?? ''),
+        'premium' => !empty($d['premium']),
+        'sort' => (int) ($d['sortOrder'] ?? 999),
+    ]);
+    echo json_encode(['id' => (int) $stmt->fetchColumn()]);
+    exit;
+}
+
+if (preg_match('#^api/admin/guides/(\d+)$#', $path, $m) && in_array($method, ['PUT', 'DELETE'], true)) {
+    requireAdmin($pdo);
+    $id = (int) $m[1];
+    if ($method === 'DELETE') {
+        $stmt = $pdo->prepare('DELETE FROM guides WHERE id = :id');
+        $stmt->execute(['id' => $id]);
+        echo json_encode(['ok' => true]);
+        exit;
+    }
+    $d = body();
+    $fields = ['belt_slug' => 'belt', 'title' => 'title', 'description' => 'description',
+               'file_url' => 'fileUrl', 'premium' => 'premium', 'sort_order' => 'sortOrder'];
+    $sets = [];
+    $params = ['id' => $id];
+    foreach ($fields as $col => $jsonKey) {
+        if (array_key_exists($jsonKey, $d)) {
+            $sets[] = "$col = :$col";
+            $params[$col] = $d[$jsonKey];
+        }
+    }
+    if (empty($sets)) {
+        http_response_code(400);
+        echo json_encode(['error' => 'No fields to update.']);
+        exit;
+    }
+    $stmt = $pdo->prepare('UPDATE guides SET ' . implode(', ', $sets) . ' WHERE id = :id');
+    $stmt->execute($params);
+    echo json_encode(['ok' => true]);
+    exit;
+}
+
+if ($path === 'api/admin/announcements' && $method === 'POST') {
+    requireAdmin($pdo);
+    $d = body();
+    $title = trim($d['title'] ?? '');
+    if ($title === '') {
+        http_response_code(400);
+        echo json_encode(['error' => 'A title is required.']);
+        exit;
+    }
+    $stmt = $pdo->prepare(
+        'INSERT INTO announcements (title, body, pinned) VALUES (:title, :body, :pinned) RETURNING id'
+    );
+    $stmt->execute([
+        'title' => $title,
+        'body' => trim($d['body'] ?? ''),
+        'pinned' => !empty($d['pinned']),
+    ]);
+    echo json_encode(['id' => (int) $stmt->fetchColumn()]);
+    exit;
+}
+
+if (preg_match('#^api/admin/announcements/(\d+)$#', $path, $m) && $method === 'DELETE') {
+    requireAdmin($pdo);
+    $stmt = $pdo->prepare('DELETE FROM announcements WHERE id = :id');
+    $stmt->execute(['id' => (int) $m[1]]);
+    echo json_encode(['ok' => true]);
+    exit;
+}
+
+if ($path === 'api/admin/live-sessions' && $method === 'POST') {
+    requireAdmin($pdo);
+    $d = body();
+    $title = trim($d['title'] ?? '');
+    $sessionAt = trim($d['sessionAt'] ?? '');
+    if ($title === '' || $sessionAt === '') {
+        http_response_code(400);
+        echo json_encode(['error' => 'A title and date/time are required.']);
+        exit;
+    }
+    $stmt = $pdo->prepare(
+        'INSERT INTO live_sessions (title, description, instructor, session_at, duration_minutes, join_url, belt_slug)
+         VALUES (:title, :description, :instructor, :session_at, :duration, :join_url, :belt) RETURNING id'
+    );
+    $stmt->execute([
+        'title' => $title,
+        'description' => trim($d['description'] ?? ''),
+        'instructor' => trim($d['instructor'] ?? ''),
+        'session_at' => $sessionAt,
+        'duration' => (int) ($d['durationMinutes'] ?? 60),
+        'join_url' => trim($d['joinUrl'] ?? ''),
+        'belt' => trim($d['belt'] ?? 'all') ?: 'all',
+    ]);
+    echo json_encode(['id' => (int) $stmt->fetchColumn()]);
+    exit;
+}
+
+if (preg_match('#^api/admin/live-sessions/(\d+)$#', $path, $m) && $method === 'DELETE') {
+    requireAdmin($pdo);
+    $stmt = $pdo->prepare('DELETE FROM live_sessions WHERE id = :id');
+    $stmt->execute(['id' => (int) $m[1]]);
+    echo json_encode(['ok' => true]);
+    exit;
+}
+
+// Admin sets a student's belt/stripes/grading pathway (there is no
+// self-service belt promotion -- only an instructor account can do this).
+if (preg_match('#^api/admin/users/(\d+)/progress$#', $path, $m) && $method === 'PUT') {
+    requireAdmin($pdo);
+    $id = (int) $m[1];
+    $d = body();
+
+    if (isset($d['currentBelt']) && !in_array($d['currentBelt'], BELT_ORDER, true)) {
+        http_response_code(400);
+        echo json_encode(['error' => 'Invalid belt.']);
+        exit;
+    }
+
+    $sets = [];
+    $params = ['id' => $id];
+    if (isset($d['currentBelt'])) { $sets[] = 'current_belt = :belt'; $params['belt'] = $d['currentBelt']; }
+    if (isset($d['stripes'])) { $sets[] = 'stripes = :stripes'; $params['stripes'] = (int) $d['stripes']; }
+    if (array_key_exists('nextGradingDate', $d)) { $sets[] = 'next_grading_date = :grading'; $params['grading'] = $d['nextGradingDate'] ?: null; }
+    if (array_key_exists('targetBelt', $d)) { $sets[] = 'target_belt = :target'; $params['target'] = $d['targetBelt'] ?: null; }
+
+    if (empty($sets)) {
+        http_response_code(400);
+        echo json_encode(['error' => 'No fields to update.']);
+        exit;
+    }
+    $stmt = $pdo->prepare('UPDATE users SET ' . implode(', ', $sets) . ' WHERE id = :id');
+    $stmt->execute($params);
+    echo json_encode(['ok' => true]);
+    exit;
+}
+
+// Lightweight student lookup for the admin panel (name/email search).
+if ($path === 'api/admin/users' && $method === 'GET') {
+    requireAdmin($pdo);
+    $q = trim($_GET['q'] ?? '');
+    if ($q !== '') {
+        $stmt = $pdo->prepare(
+            'SELECT id, name, email, subscription_tier, current_belt, stripes, next_grading_date, target_belt
+             FROM users WHERE name ILIKE :q OR email ILIKE :q ORDER BY name LIMIT 20'
+        );
+        $stmt->execute(['q' => '%' . $q . '%']);
+    } else {
+        $stmt = $pdo->query(
+            'SELECT id, name, email, subscription_tier, current_belt, stripes, next_grading_date, target_belt
+             FROM users ORDER BY created_at DESC LIMIT 20'
+        );
+    }
+    $result = array_map(function ($row) {
+        return [
+            'id' => (int) $row['id'],
+            'name' => $row['name'],
+            'email' => $row['email'],
+            'subscriptionTier' => $row['subscription_tier'],
+            'currentBelt' => $row['current_belt'],
+            'stripes' => (int) $row['stripes'],
+            'nextGradingDate' => $row['next_grading_date'],
+            'targetBelt' => $row['target_belt'],
+        ];
+    }, $stmt->fetchAll(PDO::FETCH_ASSOC));
+    echo json_encode($result);
     exit;
 }
 
@@ -375,7 +714,7 @@ if ($path === 'api/subscriptions' && $method === 'POST') {
     $user = requireAuth($pdo);
     $tierSlug = body()['tierSlug'] ?? '';
 
-    $tierStmt = $pdo->prepare('SELECT slug, price_cents, trial_days FROM tiers WHERE slug = :slug');
+    $tierStmt = $pdo->prepare('SELECT slug, price_cents FROM tiers WHERE slug = :slug');
     $tierStmt->execute(['slug' => $tierSlug]);
     $tier = $tierStmt->fetch(PDO::FETCH_ASSOC);
 
@@ -389,22 +728,16 @@ if ($path === 'api/subscriptions' && $method === 'POST') {
         echo json_encode(['error' => 'Paid tiers must go through checkout.', 'requiresCheckout' => true]);
         exit;
     }
-    if (toBool($user['trial_used'])) {
-        http_response_code(409);
-        echo json_encode(['error' => "You've already used your free trial. Choose a paid plan to continue."]);
-        exit;
-    }
 
-    $trialDays = (int) ($tier['trial_days'] ?? 7);
     $update = $pdo->prepare(
-        "UPDATE users
-         SET subscription_tier = :tier, subscribed_at = NOW(),
-             trial_ends_at = NOW() + (:days || ' days')::interval, trial_used = TRUE
+        'UPDATE users SET subscription_tier = :tier, subscribed_at = NOW(),
+                trial_ends_at = CASE WHEN :tier = \'trial\' THEN NOW() + INTERVAL \'7 days\' ELSE trial_ends_at END,
+                trial_used = CASE WHEN :tier = \'trial\' THEN TRUE ELSE trial_used END
          WHERE id = :id
-         RETURNING id, name, email, subscription_tier, is_admin, email_verified, trial_ends_at, trial_used,
-                account_status, stripe_customer_id, stripe_subscription_id, " . USER_ACTIVE_SQL
+         RETURNING id, name, email, subscription_tier, is_admin, email_verified,
+                   trial_ends_at, trial_used, current_belt, stripes, next_grading_date, target_belt, created_at'
     );
-    $update->execute(['tier' => $tierSlug, 'days' => $trialDays, 'id' => $user['id']]);
+    $update->execute(['tier' => $tierSlug, 'id' => $user['id']]);
     echo json_encode(['user' => publicUser($update->fetch(PDO::FETCH_ASSOC))]);
     exit;
 }
@@ -455,17 +788,8 @@ if ($path === 'api/webhooks/stripe' && $method === 'POST') {
         $tierSlug = $session['metadata']['tier_slug'] ?? null;
 
         if ($userId && $tierSlug) {
-            $update = $pdo->prepare(
-                'UPDATE users SET subscription_tier = :tier, subscribed_at = NOW(),
-                 stripe_customer_id = :cust, stripe_subscription_id = :sub, account_status = \'active\'
-                 WHERE id = :id'
-            );
-            $update->execute([
-                'tier' => $tierSlug,
-                'cust' => $session['customer'] ?? null,
-                'sub' => $session['subscription'] ?? null,
-                'id' => $userId,
-            ]);
+            $update = $pdo->prepare('UPDATE users SET subscription_tier = :tier, subscribed_at = NOW(), stripe_customer_id = :cust WHERE id = :id');
+            $update->execute(['tier' => $tierSlug, 'cust' => $session['customer'] ?? null, 'id' => $userId]);
 
             $tierRow = $pdo->prepare('SELECT price_cents FROM tiers WHERE slug = :slug');
             $tierRow->execute(['slug' => $tierSlug]);
@@ -481,86 +805,6 @@ if ($path === 'api/webhooks/stripe' && $method === 'POST') {
     }
 
     echo json_encode(['received' => true]);
-    exit;
-}
-
-/* ============================================================
-   ACCOUNT MANAGEMENT
-   ============================================================ */
-
-if ($path === 'api/account/billing-portal' && $method === 'POST') {
-    $user = requireAuth($pdo);
-    if (empty($user['stripe_customer_id'])) {
-        http_response_code(400);
-        echo json_encode(['error' => 'No billing account yet -- subscribe to a paid plan first.']);
-        exit;
-    }
-    $result = createBillingPortalSession($user['stripe_customer_id']);
-    if (isset($result['error'])) {
-        http_response_code(502);
-        echo json_encode(['error' => $result['error']]);
-        exit;
-    }
-    echo json_encode($result);
-    exit;
-}
-
-if ($path === 'api/account/pause' && $method === 'POST') {
-    $user = requireAuth($pdo);
-    if (empty($user['stripe_subscription_id'])) {
-        http_response_code(400);
-        echo json_encode(['error' => 'No active paid subscription to pause.']);
-        exit;
-    }
-    $result = pauseStripeSubscription($user['stripe_subscription_id']);
-    if (isset($result['error'])) {
-        http_response_code(502);
-        echo json_encode(['error' => $result['error']]);
-        exit;
-    }
-    $update = $pdo->prepare('UPDATE users SET account_status = \'paused\' WHERE id = :id');
-    $update->execute(['id' => $user['id']]);
-    echo json_encode(['ok' => true]);
-    exit;
-}
-
-if ($path === 'api/account/resume' && $method === 'POST') {
-    $user = requireAuth($pdo);
-    if (empty($user['stripe_subscription_id'])) {
-        http_response_code(400);
-        echo json_encode(['error' => 'No subscription to resume.']);
-        exit;
-    }
-    $result = resumeStripeSubscription($user['stripe_subscription_id']);
-    if (isset($result['error'])) {
-        http_response_code(502);
-        echo json_encode(['error' => $result['error']]);
-        exit;
-    }
-    $update = $pdo->prepare('UPDATE users SET account_status = \'active\' WHERE id = :id');
-    $update->execute(['id' => $user['id']]);
-    echo json_encode(['ok' => true]);
-    exit;
-}
-
-// Cancels any live Stripe subscription FIRST, so deleting an account can
-// never leave someone getting billed for a service they can no longer log
-// into. The user row is deleted last, and cascades to sessions/otp_codes.
-if ($path === 'api/account' && $method === 'DELETE') {
-    $user = requireAuth($pdo);
-
-    if (!empty($user['stripe_subscription_id'])) {
-        $cancel = cancelStripeSubscription($user['stripe_subscription_id']);
-        if (isset($cancel['error'])) {
-            http_response_code(502);
-            echo json_encode(['error' => 'Could not cancel your subscription automatically: ' . $cancel['error'] . '. Please contact support before deleting your account.']);
-            exit;
-        }
-    }
-
-    $stmt = $pdo->prepare('DELETE FROM users WHERE id = :id');
-    $stmt->execute(['id' => $user['id']]);
-    echo json_encode(['ok' => true]);
     exit;
 }
 

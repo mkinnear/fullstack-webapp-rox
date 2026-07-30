@@ -764,75 +764,51 @@ async function startCheckout(tier) {
 /* ---------------- NAV AUTH STATE ---------------- */
 
 function updateNavAuthState() {
+  const badge = document.getElementById("tier-badge");
   const signInBtn = document.getElementById("nav-signin");
   const joinBtn = document.getElementById("nav-join");
   const adminBtn = document.getElementById("nav-admin");
-  const accountMenu = document.getElementById("account-menu");
+  const dashboardBtn = document.getElementById("nav-dashboard");
+  dashboardBtn.classList.toggle("hidden", !state.currentUser);
 
-  adminBtn.classList.toggle("hidden", !(state.currentUser && state.currentUser.isAdmin));
-
-  if (!state.currentUser) {
-    accountMenu.classList.add("hidden");
-    signInBtn.classList.remove("hidden");
-    joinBtn.classList.remove("hidden");
+  if (state.currentUser) {
+    const sub = state.currentUser.subscriptionTier;
+    if (sub === "trial" && state.currentUser.subscriptionActive) {
+      const daysLeft = Math.max(0, Math.ceil((new Date(state.currentUser.trialEndsAt) - Date.now()) / 86400000));
+      badge.textContent = `Trial · ${daysLeft} day${daysLeft === 1 ? "" : "s"} left`;
+      badge.classList.remove("hidden");
+      badge.onclick = null;
+      badge.style.cursor = "default";
+    } else if (sub === "trial" && !state.currentUser.subscriptionActive) {
+      badge.textContent = "Trial expired";
+      badge.classList.remove("hidden");
+      badge.onclick = () => scrollToId("membership");
+      badge.style.cursor = "pointer";
+    } else if (sub) {
+      const tier = state.tiers.find((t) => t.slug === sub);
+      badge.textContent = tier ? tier.name : sub;
+      badge.classList.remove("hidden");
+      badge.onclick = null;
+      badge.style.cursor = "default";
+    } else if (!state.currentUser.emailVerified) {
+      badge.textContent = "Verify email";
+      badge.classList.remove("hidden");
+      badge.onclick = () => openAuthModal("verify");
+      badge.style.cursor = "pointer";
+    } else {
+      badge.classList.add("hidden");
+    }
+    signInBtn.textContent = "Log out (" + state.currentUser.name.split(" ")[0] + ")";
+    signInBtn.onclick = handleLogout;
+    joinBtn.textContent = state.currentUser.subscriptionActive ? "Manage" : "Join now";
+    adminBtn.classList.toggle("hidden", !state.currentUser.isAdmin);
+  } else {
+    badge.classList.add("hidden");
     signInBtn.textContent = "Sign in";
     signInBtn.onclick = () => openAuthModal("signin");
     joinBtn.textContent = "Join now";
-    return;
+    adminBtn.classList.add("hidden");
   }
-
-  signInBtn.classList.add("hidden");
-  joinBtn.classList.add("hidden");
-  accountMenu.classList.remove("hidden");
-  populateAccountDropdown();
-}
-
-function populateAccountDropdown() {
-  const user = state.currentUser;
-  document.getElementById("account-name").textContent = user.name;
-  document.getElementById("account-email").textContent = user.email;
-
-  const statusLine = document.getElementById("account-status-line");
-  const sub = user.subscriptionTier;
-  if (!user.emailVerified) {
-    statusLine.textContent = "Email not verified";
-  } else if (sub === "trial" && user.subscriptionActive) {
-    const daysLeft = Math.max(0, Math.ceil((new Date(user.trialEndsAt) - Date.now()) / 86400000));
-    statusLine.textContent = `Free Trial · ${daysLeft} day${daysLeft === 1 ? "" : "s"} left`;
-  } else if (sub === "trial" && !user.subscriptionActive) {
-    statusLine.textContent = "Free Trial · Expired";
-  } else if (sub && user.accountStatus === "paused") {
-    statusLine.textContent = tierNameFor(sub) + " · On hold";
-  } else if (sub) {
-    statusLine.textContent = tierNameFor(sub);
-  } else {
-    statusLine.textContent = "No membership yet";
-  }
-
-  const upgradeBtn = document.getElementById("menu-upgrade");
-  if (sub === "advanced") {
-    upgradeBtn.classList.add("hidden");
-  } else {
-    upgradeBtn.classList.remove("hidden");
-    upgradeBtn.textContent = sub && sub !== "trial"
-      ? `${tierNameFor(sub)} · Upgrade`
-      : sub === "trial" && !user.subscriptionActive
-        ? "Free Trial Expired · Upgrade"
-        : "Free Trial · Upgrade";
-  }
-
-  const holdBtn = document.getElementById("menu-hold");
-  if (sub === "standard" || sub === "advanced") {
-    holdBtn.classList.remove("hidden");
-    holdBtn.textContent = user.accountStatus === "paused" ? "Resume account" : "Put account on hold";
-  } else {
-    holdBtn.classList.add("hidden");
-  }
-}
-
-function tierNameFor(slug) {
-  const tier = state.tiers.find((t) => t.slug === slug);
-  return tier ? tier.name : slug;
 }
 
 async function handleLogout() {
@@ -858,6 +834,7 @@ function wireNav() {
   document.getElementById("nav-join").addEventListener("click", () => scrollToId("membership"));
   document.getElementById("nav-signin").addEventListener("click", () => openAuthModal("signin"));
   document.getElementById("nav-admin").addEventListener("click", () => { window.location.href = "admin.html"; });
+  document.getElementById("nav-dashboard").addEventListener("click", () => { window.location.href = "dashboard.html"; });
 
   const menuToggle = document.getElementById("menu-toggle");
   const navLinks = document.getElementById("nav-links");
@@ -871,7 +848,7 @@ function wireNav() {
   menuToggle.addEventListener("click", () => setMenuOpen(!navLinks.classList.contains("open")));
 
   navLinks.addEventListener("click", (e) => {
-    if (e.target.closest("button") && !e.target.closest("#account-toggle")) setMenuOpen(false);
+    if (e.target.closest("button")) setMenuOpen(false);
   });
 
   document.addEventListener("click", (e) => {
@@ -887,132 +864,6 @@ function wireNav() {
   window.addEventListener("resize", () => {
     if (window.innerWidth > 860) setMenuOpen(false);
   });
-
-  wireAccountDropdown();
-}
-
-function wireAccountDropdown() {
-  const accountMenu = document.getElementById("account-menu");
-  const toggle = document.getElementById("account-toggle");
-  const dropdown = document.getElementById("account-dropdown");
-
-  function setOpen(open) {
-    accountMenu.classList.toggle("open", open);
-    dropdown.classList.toggle("hidden", !open);
-    toggle.setAttribute("aria-expanded", String(open));
-  }
-
-  toggle.addEventListener("click", () => setOpen(dropdown.classList.contains("hidden")));
-
-  document.addEventListener("click", (e) => {
-    if (!accountMenu.classList.contains("open")) return;
-    if (!accountMenu.contains(e.target)) setOpen(false);
-  });
-  document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") setOpen(false);
-  });
-
-  document.getElementById("menu-personal-info").addEventListener("click", () => {
-    setOpen(false);
-    openPersonalInfoModal();
-  });
-  document.getElementById("menu-manage-account").addEventListener("click", () => {
-    setOpen(false);
-    handleManageAccount();
-  });
-  document.getElementById("menu-upgrade").addEventListener("click", () => {
-    setOpen(false);
-    scrollToId("membership");
-  });
-  document.getElementById("menu-hold").addEventListener("click", () => {
-    setOpen(false);
-    handleHoldToggle();
-  });
-  document.getElementById("menu-delete").addEventListener("click", () => {
-    setOpen(false);
-    handleDeleteAccount();
-  });
-  document.getElementById("menu-logout").addEventListener("click", () => {
-    setOpen(false);
-    handleLogout();
-  });
-}
-
-function openPersonalInfoModal() {
-  const user = state.currentUser;
-  const rows = [
-    ["Name", user.name],
-    ["Email", user.email],
-    ["Email verified", user.emailVerified ? "Yes" : "No"],
-    ["Membership", user.subscriptionTier ? tierNameFor(user.subscriptionTier) : "None yet"],
-  ];
-  if (user.subscriptionTier === "trial" && user.trialEndsAt) {
-    rows.push(["Trial ends", new Date(user.trialEndsAt).toLocaleDateString()]);
-  }
-  if (user.subscriptionTier && user.subscriptionTier !== "trial") {
-    rows.push(["Account status", user.accountStatus === "paused" ? "On hold" : "Active"]);
-  }
-
-  openOverlay(`
-    <div class="modal-body">
-      <h3 class="disp" style="font-size:24px;margin:0 0 16px;">PERSONAL INFORMATION</h3>
-      ${rows.map(([label, value]) => `
-        <div class="info-row">
-          <span class="info-row-label">${escapeHTML(label)}</span>
-          <span class="info-row-value">${escapeHTML(String(value))}</span>
-        </div>
-      `).join("")}
-    </div>
-  `);
-}
-
-async function handleManageAccount() {
-  const user = state.currentUser;
-  if (!user.hasBilling) {
-    scrollToId("membership");
-    return;
-  }
-  try {
-    const data = await api("/account/billing-portal", { method: "POST" });
-    if (data.url) window.location.href = data.url;
-  } catch (err) {
-    alert(err.message);
-  }
-}
-
-async function handleHoldToggle() {
-  const isPaused = state.currentUser.accountStatus === "paused";
-  const verb = isPaused ? "resume" : "pause";
-  if (!confirm(isPaused ? "Resume billing and reactivate your membership?" : "Put your membership on hold? You'll lose access to premium content until you resume.")) {
-    return;
-  }
-  try {
-    await api(`/account/${verb}`, { method: "POST" });
-    const { user } = await api("/auth/me");
-    state.currentUser = user;
-    updateNavAuthState();
-    renderTierGrid();
-    renderVideoGrid();
-  } catch (err) {
-    alert(err.message);
-  }
-}
-
-async function handleDeleteAccount() {
-  if (!confirm("Delete your account permanently? This cancels any active subscription and can't be undone.")) {
-    return;
-  }
-  try {
-    await api("/account", { method: "DELETE" });
-    clearToken();
-    state.currentUser = null;
-    updateNavAuthState();
-    renderTierGrid();
-    renderVideoGrid();
-    showToast("Your account has been deleted.");
-  } catch (err) {
-    alert(err.message);
-  }
 }
 
 document.addEventListener("DOMContentLoaded", init);

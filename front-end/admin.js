@@ -25,6 +25,10 @@ async function init() {
   document.getElementById("admin-logout").addEventListener("click", handleLogout);
   document.getElementById("add-video-form").addEventListener("submit", handleAddVideo);
   document.getElementById("add-event-form").addEventListener("submit", handleAddEvent);
+  document.getElementById("user-search-form").addEventListener("submit", handleUserSearch);
+  document.getElementById("add-guide-form").addEventListener("submit", handleAddGuide);
+  document.getElementById("add-announcement-form").addEventListener("submit", handleAddAnnouncement);
+  document.getElementById("add-live-form").addEventListener("submit", handleAddLiveSession);
   wireMobileMenu();
 
   const token = getToken();
@@ -59,6 +63,10 @@ function showDashboard() {
   loadContent();
   loadVideos();
   loadEvents();
+  loadGuides();
+  loadAnnouncements();
+  loadLiveSessions();
+  document.getElementById("user-search-results").innerHTML = "";
 }
 
 async function handleLogin(e) {
@@ -313,6 +321,260 @@ async function handleAddEvent(e) {
     await api("/admin/events", { method: "POST", body: JSON.stringify(payload) });
     e.target.reset();
     loadEvents();
+  } catch (err) {
+    alert(err.message);
+  }
+}
+
+/* ---------------- STUDENT BELT & GRADING ---------------- */
+
+async function handleUserSearch(e) {
+  e.preventDefault();
+  const q = document.getElementById("user-search-input").value.trim();
+  const list = document.getElementById("user-search-results");
+  list.innerHTML = `<p class="loading-note">Searching…</p>`;
+  try {
+    const users = await api(`/admin/users?q=${encodeURIComponent(q)}`);
+    list.innerHTML = "";
+    if (users.length === 0) list.innerHTML = `<p class="loading-note">No matching students.</p>`;
+    users.forEach((u) => list.appendChild(renderUserRow(u)));
+  } catch (err) {
+    list.innerHTML = `<p class="error-note">${escapeHTML(err.message)}</p>`;
+  }
+}
+
+function renderUserRow(u) {
+  const row = document.createElement("div");
+  row.className = "video-row";
+  row.innerHTML = `
+    <div style="font-size:14px;margin-bottom:8px;">
+      <strong>${escapeHTML(u.name)}</strong> · ${escapeHTML(u.email)} · ${escapeHTML(u.subscriptionTier || "no plan")}
+    </div>
+    <div class="video-row-grid">
+      <label><span class="field-label">Belt</span>
+        <select data-f="currentBelt">${BELTS.map((b) => `<option value="${b}" ${b === u.currentBelt ? "selected" : ""}>${b}</option>`).join("")}</select>
+      </label>
+      <label><span class="field-label">Stripes</span><input data-f="stripes" type="number" min="0" max="4" value="${u.stripes ?? 0}" /></label>
+      <label><span class="field-label">Target belt</span>
+        <select data-f="targetBelt"><option value="">—</option>${BELTS.map((b) => `<option value="${b}" ${b === u.targetBelt ? "selected" : ""}>${b}</option>`).join("")}</select>
+      </label>
+      <label><span class="field-label">Next grading date</span><input data-f="nextGradingDate" type="date" value="${escapeHTML(u.nextGradingDate || "")}" /></label>
+    </div>
+    <div class="row-actions">
+      <button class="btn btn-primary" data-action="save">Save</button>
+      <span class="save-status" style="font-size:12px;color:var(--green-belt);"></span>
+    </div>
+  `;
+
+  row.querySelector('[data-action="save"]').addEventListener("click", async () => {
+    const status = row.querySelector(".save-status");
+    const get = (f) => row.querySelector(`[data-f="${f}"]`).value;
+    const payload = {
+      currentBelt: get("currentBelt"),
+      stripes: parseInt(get("stripes"), 10) || 0,
+      targetBelt: get("targetBelt"),
+      nextGradingDate: get("nextGradingDate"),
+    };
+    try {
+      await api(`/admin/users/${u.id}/progress`, { method: "PUT", body: JSON.stringify(payload) });
+      status.style.color = "var(--green-belt)";
+      status.textContent = "Saved";
+      setTimeout(() => (status.textContent = ""), 2000);
+    } catch (err) {
+      status.style.color = "var(--red)";
+      status.textContent = err.message;
+    }
+  });
+
+  return row;
+}
+
+/* ---------------- TRAINING GUIDES ---------------- */
+
+async function loadGuides() {
+  const list = document.getElementById("guide-list");
+  list.innerHTML = `<p class="loading-note">Loading…</p>`;
+  try {
+    const guides = await api("/guides");
+    list.innerHTML = "";
+    guides.forEach((g) => list.appendChild(renderGuideRow(g)));
+    if (guides.length === 0) list.innerHTML = `<p class="loading-note">No guides yet.</p>`;
+  } catch (err) {
+    list.innerHTML = `<p class="error-note">${escapeHTML(err.message)}</p>`;
+  }
+}
+
+function renderGuideRow(g) {
+  const row = document.createElement("div");
+  row.className = "video-row";
+  row.innerHTML = `
+    <div class="video-row-grid">
+      <label><span class="field-label">Title</span><input data-f="title" value="${escapeHTML(g.title)}" /></label>
+      <label><span class="field-label">Belt</span>
+        <select data-f="belt"><option value="all" ${g.belt === "all" ? "selected" : ""}>all</option>${BELTS.map((b) => `<option value="${b}" ${b === g.belt ? "selected" : ""}>${b}</option>`).join("")}</select>
+      </label>
+      <label class="field-checkbox"><input type="checkbox" data-f="premium" ${g.premium ? "checked" : ""} /> Premium</label>
+      <label style="grid-column:1/-1;"><span class="field-label">Description</span><input data-f="description" value="${escapeHTML(g.description || "")}" /></label>
+      <label style="grid-column:1/-1;"><span class="field-label">File URL</span><input data-f="fileUrl" value="${escapeHTML(g.fileUrl || "")}" /></label>
+    </div>
+    <div class="row-actions">
+      <button class="btn btn-primary" data-action="save">Save</button>
+      <button class="btn btn-danger" data-action="delete">Delete</button>
+      <span class="save-status" style="font-size:12px;color:var(--green-belt);"></span>
+    </div>
+  `;
+
+  row.querySelector('[data-action="save"]').addEventListener("click", async () => {
+    const status = row.querySelector(".save-status");
+    const get = (f) => row.querySelector(`[data-f="${f}"]`);
+    const payload = {
+      title: get("title").value,
+      belt: get("belt").value,
+      description: get("description").value,
+      fileUrl: get("fileUrl").value,
+      premium: get("premium").checked,
+    };
+    try {
+      await api(`/admin/guides/${g.id}`, { method: "PUT", body: JSON.stringify(payload) });
+      status.style.color = "var(--green-belt)";
+      status.textContent = "Saved";
+      setTimeout(() => (status.textContent = ""), 2000);
+    } catch (err) {
+      status.style.color = "var(--red)";
+      status.textContent = err.message;
+    }
+  });
+
+  row.querySelector('[data-action="delete"]').addEventListener("click", async () => {
+    if (!confirm(`Delete "${g.title}"? This can't be undone.`)) return;
+    try {
+      await api(`/admin/guides/${g.id}`, { method: "DELETE" });
+      row.remove();
+    } catch (err) {
+      alert(err.message);
+    }
+  });
+
+  return row;
+}
+
+async function handleAddGuide(e) {
+  e.preventDefault();
+  const val = (id) => document.getElementById(id).value;
+  const payload = {
+    title: val("ng-title"),
+    belt: val("ng-belt"),
+    description: val("ng-description"),
+    fileUrl: val("ng-url"),
+    premium: document.getElementById("ng-premium").checked,
+  };
+  try {
+    await api("/admin/guides", { method: "POST", body: JSON.stringify(payload) });
+    e.target.reset();
+    document.getElementById("ng-premium").checked = true;
+    loadGuides();
+  } catch (err) {
+    alert(err.message);
+  }
+}
+
+/* ---------------- ANNOUNCEMENTS ---------------- */
+
+async function loadAnnouncements() {
+  const list = document.getElementById("announcement-list");
+  list.innerHTML = `<p class="loading-note">Loading…</p>`;
+  try {
+    const items = await api("/announcements");
+    list.innerHTML = "";
+    items.forEach((a) => {
+      const row = document.createElement("div");
+      row.className = "content-row";
+      row.innerHTML = `
+        <span class="content-row-key">${a.pinned ? "📌 " : ""}${escapeHTML(a.title)}</span>
+        <p style="color:var(--muted);font-size:13px;margin:0;">${escapeHTML(a.body)}</p>
+        <div class="row-actions"><button class="btn btn-danger" type="button">Delete</button></div>
+      `;
+      row.querySelector("button").addEventListener("click", async () => {
+        if (!confirm(`Delete "${a.title}"?`)) return;
+        try {
+          await api(`/admin/announcements/${a.id}`, { method: "DELETE" });
+          row.remove();
+        } catch (err) {
+          alert(err.message);
+        }
+      });
+      list.appendChild(row);
+    });
+    if (items.length === 0) list.innerHTML = `<p class="loading-note">No announcements yet.</p>`;
+  } catch (err) {
+    list.innerHTML = `<p class="error-note">${escapeHTML(err.message)}</p>`;
+  }
+}
+
+async function handleAddAnnouncement(e) {
+  e.preventDefault();
+  const val = (id) => document.getElementById(id).value;
+  const payload = { title: val("na-title"), body: val("na-body"), pinned: document.getElementById("na-pinned").checked };
+  try {
+    await api("/admin/announcements", { method: "POST", body: JSON.stringify(payload) });
+    e.target.reset();
+    loadAnnouncements();
+  } catch (err) {
+    alert(err.message);
+  }
+}
+
+/* ---------------- LIVE SESSIONS ---------------- */
+
+async function loadLiveSessions() {
+  const list = document.getElementById("live-session-list");
+  list.innerHTML = `<p class="loading-note">Loading…</p>`;
+  try {
+    const items = await api("/live-sessions");
+    list.innerHTML = "";
+    items.forEach((s) => {
+      const row = document.createElement("div");
+      row.className = "content-row";
+      const when = new Date(s.sessionAt).toLocaleString();
+      row.innerHTML = `
+        <span class="content-row-key">${escapeHTML(s.title)} — ${escapeHTML(when)}</span>
+        <p style="color:var(--muted);font-size:13px;margin:0;">${escapeHTML(s.instructor)} · ${s.durationMinutes} min · ${escapeHTML(s.belt)}</p>
+        <div class="row-actions"><button class="btn btn-danger" type="button">Delete</button></div>
+      `;
+      row.querySelector("button").addEventListener("click", async () => {
+        if (!confirm(`Delete "${s.title}"?`)) return;
+        try {
+          await api(`/admin/live-sessions/${s.id}`, { method: "DELETE" });
+          row.remove();
+        } catch (err) {
+          alert(err.message);
+        }
+      });
+      list.appendChild(row);
+    });
+    if (items.length === 0) list.innerHTML = `<p class="loading-note">No live sessions scheduled.</p>`;
+  } catch (err) {
+    list.innerHTML = `<p class="error-note">${escapeHTML(err.message)}</p>`;
+  }
+}
+
+async function handleAddLiveSession(e) {
+  e.preventDefault();
+  const val = (id) => document.getElementById(id).value;
+  const localDatetime = val("nl-datetime"); // "YYYY-MM-DDTHH:MM" in the browser's local time
+  const payload = {
+    title: val("nl-title"),
+    sessionAt: localDatetime ? localDatetime.replace("T", " ") + ":00" : "",
+    durationMinutes: parseInt(val("nl-duration"), 10) || 60,
+    instructor: val("nl-instructor"),
+    belt: val("nl-belt"),
+    description: val("nl-description"),
+    joinUrl: val("nl-url"),
+  };
+  try {
+    await api("/admin/live-sessions", { method: "POST", body: JSON.stringify(payload) });
+    e.target.reset();
+    loadLiveSessions();
   } catch (err) {
     alert(err.message);
   }
