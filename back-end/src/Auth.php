@@ -47,7 +47,8 @@ function getUserFromToken(PDO $pdo, ?string $token): ?array {
     $stmt = $pdo->prepare(
         "SELECT u.id, u.name, u.email, u.subscription_tier, u.is_admin, u.email_verified,
                 u.trial_ends_at, u.trial_used, u.current_belt, u.stripes, u.next_grading_date,
-                u.target_belt, u.created_at, u.role
+                u.target_belt, u.created_at, u.role,
+                u.account_status, u.stripe_customer_id, u.stripe_subscription_id
          FROM sessions s
          JOIN users u ON u.id = s.user_id
          WHERE s.token_hash = :hash AND s.expires_at > NOW()"

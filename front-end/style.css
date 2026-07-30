@@ -148,6 +148,8 @@ input:focus { outline: 2px solid var(--red); outline-offset: 1px; }
 .btn-hero .play-ico { border-left-color: #2A2113; }
 .btn-outline { background: transparent; color: var(--bone); border: 1px solid #55524A; font-weight: 700; font-size: 14px; padding: 14px 26px; }
 .btn-outline:hover { border-color: var(--bone); }
+.btn-danger { background: transparent; color: var(--red); border: 1px solid var(--red); font-weight: 700; font-size: 14px; padding: 14px 26px; }
+.btn-danger:hover { background: var(--red); color: var(--bone); }
 .btn-block { width: 100%; padding: 14px; font-size: 14px; }
 
 .play-ico {

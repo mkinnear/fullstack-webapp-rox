@@ -14,6 +14,8 @@ CREATE TABLE IF NOT EXISTS users (
     trial_ends_at TIMESTAMP,
     trial_used BOOLEAN NOT NULL DEFAULT FALSE,
     stripe_customer_id TEXT,
+    stripe_subscription_id TEXT,
+    account_status TEXT NOT NULL DEFAULT 'active',
     failed_login_attempts INT NOT NULL DEFAULT 0,
     locked_until TIMESTAMP,
     current_belt TEXT NOT NULL DEFAULT 'white',

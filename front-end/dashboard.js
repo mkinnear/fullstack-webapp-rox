@@ -104,6 +104,7 @@ async function init() {
   renderResourceGroup("terminology-grid", resources.terminology || [], true);
   renderResourceGroup("philosophy-grid", resources.philosophy || []);
   renderResourceGroup("instructor-grid", resources.instructor || []);
+  renderAccountSection();
 }
 
 function showSignedOutGate() {
@@ -496,6 +497,104 @@ function wireQuickNav() {
     btn.addEventListener("click", () => {
       const target = document.getElementById(btn.dataset.jump);
       if (target) target.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  });
+}
+
+/* ---------------- ACCOUNT ---------------- */
+
+const TIER_NAMES = { trial: "Free Trial", standard: "Academy Member", advanced: "Advanced Member" };
+
+function renderAccountSection() {
+  const user = state.user;
+  const infoEl = document.getElementById("account-info");
+  const actionsEl = document.getElementById("account-actions");
+
+  const rows = [
+    ["Name", user.name],
+    ["Email", user.email],
+    ["Email verified", user.emailVerified ? "Yes" : "No"],
+    ["Membership", user.subscriptionTier ? (TIER_NAMES[user.subscriptionTier] || user.subscriptionTier) : "None yet"],
+  ];
+  if (user.subscriptionTier === "trial" && user.trialEndsAt) {
+    rows.push(["Trial ends", new Date(user.trialEndsAt).toLocaleDateString()]);
+  }
+  if (user.subscriptionTier && user.subscriptionTier !== "trial") {
+    rows.push(["Account status", user.accountStatus === "paused" ? "On hold" : "Active"]);
+  }
+
+  infoEl.innerHTML = rows.map(([label, value]) => `
+    <div class="info-row">
+      <span class="info-row-label">${escapeHTML(label)}</span>
+      <span class="info-row-value">${escapeHTML(String(value))}</span>
+    </div>
+  `).join("");
+
+  const buttons = [];
+  const isPaid = user.subscriptionTier === "standard" || user.subscriptionTier === "advanced";
+
+  if (user.hasBilling) {
+    buttons.push(`<button class="btn btn-outline" id="acct-manage-billing">Manage billing</button>`);
+  }
+  if (isPaid) {
+    buttons.push(`<button class="btn btn-outline" id="acct-hold-toggle">${user.accountStatus === "paused" ? "Resume account" : "Put account on hold"}</button>`);
+  }
+  buttons.push(`<button class="btn btn-danger" id="acct-delete">Delete account</button>`);
+  actionsEl.innerHTML = buttons.join("");
+
+  const manageBtn = document.getElementById("acct-manage-billing");
+  if (manageBtn) manageBtn.addEventListener("click", handleManageBilling);
+
+  const holdBtn = document.getElementById("acct-hold-toggle");
+  if (holdBtn) holdBtn.addEventListener("click", handleHoldToggle);
+
+  document.getElementById("acct-delete").addEventListener("click", handleDeleteAccount);
+}
+
+async function handleManageBilling() {
+  try {
+    const data = await api("/account/billing-portal", { method: "POST" });
+    if (data.url) window.location.href = data.url;
+  } catch (err) {
+    alert(err.message);
+  }
+}
+
+async function handleHoldToggle() {
+  const isPaused = state.user.accountStatus === "paused";
+  const verb = isPaused ? "resume" : "pause";
+  if (!confirm(isPaused ? "Resume billing and reactivate your membership?" : "Put your membership on hold? You'll lose access to premium content until you resume.")) {
+    return;
+  }
+  try {
+    await api(`/account/${verb}`, { method: "POST" });
+    const dash = await api("/dashboard");
+    state.user = dash.user;
+    renderAccountSection();
+  } catch (err) {
+    alert(err.message);
+  }
+}
+
+function handleDeleteAccount() {
+  openOverlay(`
+    <div class="modal-body">
+      <h3 class="disp" style="font-size:24px;margin:0 0 12px;">DELETE YOUR ACCOUNT?</h3>
+      <p style="color:var(--muted);font-size:14px;margin-bottom:22px;">
+        This cancels any active subscription and permanently deletes your progress, belt record, and login.
+        This can't be undone.
+      </p>
+      <button class="btn btn-danger btn-block" id="confirm-delete">Yes, delete my account</button>
+    </div>
+  `, () => {
+    document.getElementById("confirm-delete").addEventListener("click", async () => {
+      try {
+        await api("/account", { method: "DELETE" });
+        clearToken();
+        window.location.href = "index.html";
+      } catch (err) {
+        alert(err.message);
+      }
     });
   });
 }
