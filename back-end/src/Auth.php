@@ -47,7 +47,7 @@ function getUserFromToken(PDO $pdo, ?string $token): ?array {
     $stmt = $pdo->prepare(
         "SELECT u.id, u.name, u.email, u.subscription_tier, u.is_admin, u.email_verified,
                 u.trial_ends_at, u.trial_used, u.current_belt, u.stripes, u.next_grading_date,
-                u.target_belt, u.created_at
+                u.target_belt, u.created_at, u.role
          FROM sessions s
          JOIN users u ON u.id = s.user_id
          WHERE s.token_hash = :hash AND s.expires_at > NOW()"
@@ -68,13 +68,25 @@ function requireAuth(PDO $pdo): array {
     return $user;
 }
 
-/** Returns the authenticated admin or halts with 401/403. */
+/** Returns the authenticated admin (regular admin OR super_admin) or halts with 401/403. */
 function requireAdmin(PDO $pdo): array {
     $user = requireAuth($pdo);
-    $isAdmin = $user['is_admin'] === true || $user['is_admin'] === 't';
-    if (!$isAdmin) {
+    $role = $user['role'] ?? ($user['is_admin'] === true || $user['is_admin'] === 't' ? 'admin' : 'user');
+    if ($role !== 'admin' && $role !== 'super_admin') {
         http_response_code(403);
         echo json_encode(['error' => 'Admin access required.']);
+        exit;
+    }
+    return $user;
+}
+
+/** Returns the authenticated super admin or halts with 401/403. Only a super
+ *  admin can create accounts, grant/revoke admin, or touch other staff accounts. */
+function requireSuperAdmin(PDO $pdo): array {
+    $user = requireAuth($pdo);
+    if (($user['role'] ?? 'user') !== 'super_admin') {
+        http_response_code(403);
+        echo json_encode(['error' => 'Super admin access required.']);
         exit;
     }
     return $user;

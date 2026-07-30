@@ -53,6 +53,7 @@ function publicUser(array $user): array {
     $trialEndsAt = $user['trial_ends_at'] ?? null;
     $subscriptionActive = $tier !== null
         && ($tier !== 'trial' || ($trialEndsAt !== null && strtotime($trialEndsAt) > time()));
+    $role = $user['role'] ?? ($user['is_admin'] === true || $user['is_admin'] === 't' ? 'admin' : 'user');
 
     return [
         'id' => (int) $user['id'],
@@ -62,7 +63,9 @@ function publicUser(array $user): array {
         'subscriptionActive' => $subscriptionActive,
         'trialEndsAt' => $trialEndsAt,
         'trialUsed' => array_key_exists('trial_used', $user) ? toBool($user['trial_used']) : false,
-        'isAdmin' => toBool($user['is_admin']),
+        'role' => $role,
+        'isAdmin' => $role === 'admin' || $role === 'super_admin',
+        'isSuperAdmin' => $role === 'super_admin',
         'emailVerified' => toBool($user['email_verified']),
         'currentBelt' => $user['current_belt'] ?? 'white',
         'stripes' => isset($user['stripes']) ? (int) $user['stripes'] : 0,
@@ -109,7 +112,7 @@ if ($path === 'api/auth/signup' && $method === 'POST') {
     $stmt = $pdo->prepare(
         'INSERT INTO users (name, email, password_hash) VALUES (:name, :email, :hash)
          RETURNING id, name, email, subscription_tier, is_admin, email_verified,
-                   trial_ends_at, trial_used, current_belt, stripes, next_grading_date, target_belt, created_at'
+                   trial_ends_at, trial_used, current_belt, stripes, next_grading_date, target_belt, created_at, role'
     );
     $stmt->execute([
         'name' => $name,
@@ -140,7 +143,7 @@ if ($path === 'api/auth/login' && $method === 'POST') {
 
     $stmt = $pdo->prepare(
         'SELECT id, name, email, password_hash, subscription_tier, is_admin, email_verified, locked_until,
-                trial_ends_at, trial_used, current_belt, stripes, next_grading_date, target_belt, created_at
+                trial_ends_at, trial_used, current_belt, stripes, next_grading_date, target_belt, created_at, role
          FROM users WHERE email = :email'
     );
     $stmt->execute(['email' => $email]);
@@ -353,6 +356,26 @@ if ($path === 'api/content' && $method === 'GET') {
         $map[$row['key']] = $row['value'];
     }
     echo json_encode($map);
+    exit;
+}
+
+if ($path === 'api/events' && $method === 'GET') {
+    $stmt = $pdo->query(
+        'SELECT id, title, description, event_date, location, image_url, link_url
+         FROM events ORDER BY sort_order, event_date'
+    );
+    $result = array_map(function ($row) {
+        return [
+            'id' => (int) $row['id'],
+            'title' => $row['title'],
+            'description' => $row['description'],
+            'eventDate' => $row['event_date'],
+            'location' => $row['location'],
+            'imageUrl' => $row['image_url'],
+            'linkUrl' => $row['link_url'],
+        ];
+    }, $stmt->fetchAll(PDO::FETCH_ASSOC));
+    echo json_encode($result);
     exit;
 }
 
@@ -642,11 +665,39 @@ if (preg_match('#^api/admin/live-sessions/(\d+)$#', $path, $m) && $method === 'D
     exit;
 }
 
+/** A regular admin may only manage plain 'user' accounts -- never other
+ *  admins or the super admin. Only a super_admin may touch staff accounts. */
+function requesterRole(array $user): string {
+    return $user['role'] ?? (($user['is_admin'] === true || $user['is_admin'] === 't') ? 'admin' : 'user');
+}
+
+function targetUserRole(PDO $pdo, int $id): ?string {
+    $stmt = $pdo->prepare('SELECT role FROM users WHERE id = :id');
+    $stmt->execute(['id' => $id]);
+    $role = $stmt->fetchColumn();
+    return $role === false ? null : $role;
+}
+
+function assertCanManageTarget(PDO $pdo, array $requester, int $targetId): void {
+    $targetRole = targetUserRole($pdo, $targetId);
+    if ($targetRole === null) {
+        http_response_code(404);
+        echo json_encode(['error' => 'No such account.']);
+        exit;
+    }
+    if ($targetRole !== 'user' && requesterRole($requester) !== 'super_admin') {
+        http_response_code(403);
+        echo json_encode(['error' => 'Only a super admin can manage staff accounts.']);
+        exit;
+    }
+}
+
 // Admin sets a student's belt/stripes/grading pathway (there is no
 // self-service belt promotion -- only an instructor account can do this).
 if (preg_match('#^api/admin/users/(\d+)/progress$#', $path, $m) && $method === 'PUT') {
-    requireAdmin($pdo);
+    $requester = requireAdmin($pdo);
     $id = (int) $m[1];
+    assertCanManageTarget($pdo, $requester, $id);
     $d = body();
 
     if (isset($d['currentBelt']) && !in_array($d['currentBelt'], BELT_ORDER, true)) {
@@ -673,19 +724,71 @@ if (preg_match('#^api/admin/users/(\d+)/progress$#', $path, $m) && $method === '
     exit;
 }
 
-// Lightweight student lookup for the admin panel (name/email search).
+// General account-detail edit (name/email/subscription tier). Belt/grading
+// has its own endpoint above; role changes have their own endpoint below --
+// neither can be set here.
+if (preg_match('#^api/admin/users/(\d+)$#', $path, $m) && $method === 'PUT') {
+    $requester = requireAdmin($pdo);
+    $id = (int) $m[1];
+    assertCanManageTarget($pdo, $requester, $id);
+    $d = body();
+
+    $sets = [];
+    $params = ['id' => $id];
+    if (isset($d['name'])) {
+        $name = trim($d['name']);
+        if ($name === '') { http_response_code(400); echo json_encode(['error' => 'Name cannot be empty.']); exit; }
+        $sets[] = 'name = :name'; $params['name'] = $name;
+    }
+    if (isset($d['email'])) {
+        $email = strtolower(trim($d['email']));
+        if (!isValidEmail($email)) { http_response_code(400); echo json_encode(['error' => 'Invalid email.']); exit; }
+        $sets[] = 'email = :email'; $params['email'] = $email;
+    }
+    if (array_key_exists('subscriptionTier', $d)) {
+        $sets[] = 'subscription_tier = :tier'; $params['tier'] = $d['subscriptionTier'] ?: null;
+    }
+
+    if (empty($sets)) {
+        http_response_code(400);
+        echo json_encode(['error' => 'No fields to update.']);
+        exit;
+    }
+    try {
+        $stmt = $pdo->prepare('UPDATE users SET ' . implode(', ', $sets) . ' WHERE id = :id');
+        $stmt->execute($params);
+    } catch (PDOException $e) {
+        http_response_code(409);
+        echo json_encode(['error' => 'That email is already in use.']);
+        exit;
+    }
+    echo json_encode(['ok' => true]);
+    exit;
+}
+
+// Lightweight student/staff lookup for the admin panel (name/email search).
 if ($path === 'api/admin/users' && $method === 'GET') {
     requireAdmin($pdo);
     $q = trim($_GET['q'] ?? '');
-    if ($q !== '') {
+    $roleFilter = trim($_GET['role'] ?? '');
+    $validRoleFilter = in_array($roleFilter, ['user', 'admin', 'super_admin'], true) ? $roleFilter : null;
+
+    if ($validRoleFilter !== null) {
+        // Staff directory: no name/email search, no row cap -- there won't be many admins.
         $stmt = $pdo->prepare(
-            'SELECT id, name, email, subscription_tier, current_belt, stripes, next_grading_date, target_belt
+            'SELECT id, name, email, subscription_tier, current_belt, stripes, next_grading_date, target_belt, role
+             FROM users WHERE role = :role ORDER BY name'
+        );
+        $stmt->execute(['role' => $validRoleFilter]);
+    } elseif ($q !== '') {
+        $stmt = $pdo->prepare(
+            'SELECT id, name, email, subscription_tier, current_belt, stripes, next_grading_date, target_belt, role
              FROM users WHERE name ILIKE :q OR email ILIKE :q ORDER BY name LIMIT 20'
         );
         $stmt->execute(['q' => '%' . $q . '%']);
     } else {
         $stmt = $pdo->query(
-            'SELECT id, name, email, subscription_tier, current_belt, stripes, next_grading_date, target_belt
+            'SELECT id, name, email, subscription_tier, current_belt, stripes, next_grading_date, target_belt, role
              FROM users ORDER BY created_at DESC LIMIT 20'
         );
     }
@@ -699,9 +802,92 @@ if ($path === 'api/admin/users' && $method === 'GET') {
             'stripes' => (int) $row['stripes'],
             'nextGradingDate' => $row['next_grading_date'],
             'targetBelt' => $row['target_belt'],
+            'role' => $row['role'],
         ];
     }, $stmt->fetchAll(PDO::FETCH_ASSOC));
     echo json_encode($result);
+    exit;
+}
+
+/* ============================================================
+   SUPER ADMIN ONLY: create staff/student accounts, grant/revoke admin
+   ============================================================ */
+
+// Creates an account directly (no email verification flow) as either a
+// regular user or a regular admin. Can NEVER create a super_admin -- that
+// role only ever exists via a manual database insert.
+if ($path === 'api/admin/accounts' && $method === 'POST') {
+    requireSuperAdmin($pdo);
+    $d = body();
+    $name = trim($d['name'] ?? '');
+    $email = strtolower(trim($d['email'] ?? ''));
+    $password = (string) ($d['password'] ?? '');
+    $role = $d['role'] ?? 'user';
+
+    if (!in_array($role, ['user', 'admin'], true)) {
+        http_response_code(400);
+        echo json_encode(['error' => 'Role must be "user" or "admin".']);
+        exit;
+    }
+    if ($name === '' || !isValidEmail($email) || !isStrongEnoughPassword($password)) {
+        http_response_code(400);
+        echo json_encode(['error' => 'Enter a name, a valid email, and a password of at least 8 characters.']);
+        exit;
+    }
+
+    $exists = $pdo->prepare('SELECT 1 FROM users WHERE email = :email');
+    $exists->execute(['email' => $email]);
+    if ($exists->fetch()) {
+        http_response_code(409);
+        echo json_encode(['error' => 'An account with that email already exists.']);
+        exit;
+    }
+
+    // Admin-created accounts skip the email OTP flow -- the admin has already
+    // vouched for the address.
+    $stmt = $pdo->prepare(
+        'INSERT INTO users (name, email, password_hash, role, is_admin, email_verified)
+         VALUES (:name, :email, :hash, :role, :is_admin, TRUE)
+         RETURNING id, name, email, role'
+    );
+    $stmt->execute([
+        'name' => $name,
+        'email' => $email,
+        'hash' => password_hash($password, PASSWORD_DEFAULT),
+        'role' => $role,
+        'is_admin' => $role === 'admin',
+    ]);
+    echo json_encode(['user' => $stmt->fetch(PDO::FETCH_ASSOC)]);
+    exit;
+}
+
+// Grants or revokes regular admin access. Can never set/target super_admin --
+// that role can't be assigned or changed through the API at all.
+if (preg_match('#^api/admin/users/(\d+)/role$#', $path, $m) && $method === 'PUT') {
+    requireSuperAdmin($pdo);
+    $id = (int) $m[1];
+    $role = body()['role'] ?? '';
+
+    if (!in_array($role, ['user', 'admin'], true)) {
+        http_response_code(400);
+        echo json_encode(['error' => 'Role must be "user" or "admin".']);
+        exit;
+    }
+    $currentRole = targetUserRole($pdo, $id);
+    if ($currentRole === null) {
+        http_response_code(404);
+        echo json_encode(['error' => 'No such account.']);
+        exit;
+    }
+    if ($currentRole === 'super_admin') {
+        http_response_code(403);
+        echo json_encode(['error' => 'The super admin account can only be changed directly in the database.']);
+        exit;
+    }
+
+    $stmt = $pdo->prepare('UPDATE users SET role = :role, is_admin = :is_admin WHERE id = :id');
+    $stmt->execute(['role' => $role, 'is_admin' => $role === 'admin', 'id' => $id]);
+    echo json_encode(['ok' => true]);
     exit;
 }
 
@@ -735,7 +921,7 @@ if ($path === 'api/subscriptions' && $method === 'POST') {
                 trial_used = CASE WHEN :tier = \'trial\' THEN TRUE ELSE trial_used END
          WHERE id = :id
          RETURNING id, name, email, subscription_tier, is_admin, email_verified,
-                   trial_ends_at, trial_used, current_belt, stripes, next_grading_date, target_belt, created_at'
+                   trial_ends_at, trial_used, current_belt, stripes, next_grading_date, target_belt, created_at, role'
     );
     $update->execute(['tier' => $tierSlug, 'id' => $user['id']]);
     echo json_encode(['user' => publicUser($update->fetch(PDO::FETCH_ASSOC))]);
@@ -900,6 +1086,133 @@ if (preg_match('#^api/admin/videos/(\d+)$#', $path, $m) && in_array($method, ['P
         exit;
     }
     $stmt = $pdo->prepare('UPDATE videos SET ' . implode(', ', $sets) . ' WHERE id = :id');
+    $stmt->execute($params);
+    echo json_encode(['ok' => true]);
+    exit;
+}
+
+/* ============================================================
+   ADMIN: events (homepage carousel)
+   ============================================================ */
+
+if ($path === 'api/admin/events' && $method === 'POST') {
+    requireAdmin($pdo);
+    $d = body();
+    $title = trim($d['title'] ?? '');
+    if ($title === '') {
+        http_response_code(400);
+        echo json_encode(['error' => 'A title is required.']);
+        exit;
+    }
+    $stmt = $pdo->prepare(
+        'INSERT INTO events (title, description, event_date, location, image_url, link_url, sort_order)
+         VALUES (:title, :description, :date, :location, :image, :link, :sort) RETURNING id'
+    );
+    $stmt->execute([
+        'title' => $title,
+        'description' => trim($d['description'] ?? ''),
+        'date' => $d['eventDate'] ?: null,
+        'location' => trim($d['location'] ?? ''),
+        'image' => trim($d['imageUrl'] ?? ''),
+        'link' => trim($d['linkUrl'] ?? ''),
+        'sort' => (int) ($d['sortOrder'] ?? 999),
+    ]);
+    echo json_encode(['id' => (int) $stmt->fetchColumn()]);
+    exit;
+}
+
+if (preg_match('#^api/admin/events/(\d+)$#', $path, $m) && in_array($method, ['PUT', 'DELETE'], true)) {
+    requireAdmin($pdo);
+    $id = (int) $m[1];
+    if ($method === 'DELETE') {
+        $stmt = $pdo->prepare('DELETE FROM events WHERE id = :id');
+        $stmt->execute(['id' => $id]);
+        echo json_encode(['ok' => true]);
+        exit;
+    }
+    $d = body();
+    $fields = ['title' => 'title', 'description' => 'description', 'event_date' => 'eventDate',
+               'location' => 'location', 'image_url' => 'imageUrl', 'link_url' => 'linkUrl', 'sort_order' => 'sortOrder'];
+    $sets = [];
+    $params = ['id' => $id];
+    foreach ($fields as $col => $jsonKey) {
+        if (array_key_exists($jsonKey, $d)) {
+            $sets[] = "$col = :$col";
+            $params[$col] = ($col === 'event_date' && $d[$jsonKey] === '') ? null : $d[$jsonKey];
+        }
+    }
+    if (empty($sets)) {
+        http_response_code(400);
+        echo json_encode(['error' => 'No fields to update.']);
+        exit;
+    }
+    $stmt = $pdo->prepare('UPDATE events SET ' . implode(', ', $sets) . ' WHERE id = :id');
+    $stmt->execute($params);
+    echo json_encode(['ok' => true]);
+    exit;
+}
+
+/* ============================================================
+   ADMIN: resources (terminology / philosophy / grading / instructor cards)
+   ============================================================ */
+
+if ($path === 'api/admin/resources' && $method === 'POST') {
+    requireAdmin($pdo);
+    $d = body();
+    $title = trim($d['title'] ?? '');
+    $category = trim($d['category'] ?? '');
+    if ($title === '' || !in_array($category, ['terminology', 'philosophy', 'instructor', 'grading'], true)) {
+        http_response_code(400);
+        echo json_encode(['error' => 'A title and a valid category are required.']);
+        exit;
+    }
+    $stmt = $pdo->prepare(
+        'INSERT INTO resources (category, title, body, link_url, premium, sort_order)
+         VALUES (:category, :title, :body, :link, :premium, :sort) RETURNING id'
+    );
+    $stmt->execute([
+        'category' => $category,
+        'title' => $title,
+        'body' => trim($d['body'] ?? ''),
+        'link' => trim($d['linkUrl'] ?? ''),
+        'premium' => !empty($d['premium']),
+        'sort' => (int) ($d['sortOrder'] ?? 999),
+    ]);
+    echo json_encode(['id' => (int) $stmt->fetchColumn()]);
+    exit;
+}
+
+if (preg_match('#^api/admin/resources/(\d+)$#', $path, $m) && in_array($method, ['PUT', 'DELETE'], true)) {
+    requireAdmin($pdo);
+    $id = (int) $m[1];
+    if ($method === 'DELETE') {
+        $stmt = $pdo->prepare('DELETE FROM resources WHERE id = :id');
+        $stmt->execute(['id' => $id]);
+        echo json_encode(['ok' => true]);
+        exit;
+    }
+    $d = body();
+    if (isset($d['category']) && !in_array($d['category'], ['terminology', 'philosophy', 'instructor', 'grading'], true)) {
+        http_response_code(400);
+        echo json_encode(['error' => 'Invalid category.']);
+        exit;
+    }
+    $fields = ['category' => 'category', 'title' => 'title', 'body' => 'body',
+               'link_url' => 'linkUrl', 'premium' => 'premium', 'sort_order' => 'sortOrder'];
+    $sets = [];
+    $params = ['id' => $id];
+    foreach ($fields as $col => $jsonKey) {
+        if (array_key_exists($jsonKey, $d)) {
+            $sets[] = "$col = :$col";
+            $params[$col] = $d[$jsonKey];
+        }
+    }
+    if (empty($sets)) {
+        http_response_code(400);
+        echo json_encode(['error' => 'No fields to update.']);
+        exit;
+    }
+    $stmt = $pdo->prepare('UPDATE resources SET ' . implode(', ', $sets) . ' WHERE id = :id');
     $stmt->execute($params);
     echo json_encode(['ok' => true]);
     exit;

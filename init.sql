@@ -20,6 +20,9 @@ CREATE TABLE IF NOT EXISTS users (
     stripes INT NOT NULL DEFAULT 0,
     next_grading_date DATE,
     target_belt TEXT,
+    -- 'user' | 'admin' | 'super_admin'. super_admin is never inserted by app
+    -- code anywhere -- it only ever exists via a manual psql INSERT/UPDATE.
+    role TEXT NOT NULL DEFAULT 'user',
     created_at TIMESTAMP DEFAULT NOW()
 );
 

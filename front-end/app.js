@@ -767,7 +767,6 @@ function updateNavAuthState() {
   const badge = document.getElementById("tier-badge");
   const signInBtn = document.getElementById("nav-signin");
   const joinBtn = document.getElementById("nav-join");
-  const adminBtn = document.getElementById("nav-admin");
   const dashboardBtn = document.getElementById("nav-dashboard");
   dashboardBtn.classList.toggle("hidden", !state.currentUser);
 
@@ -801,13 +800,11 @@ function updateNavAuthState() {
     signInBtn.textContent = "Log out (" + state.currentUser.name.split(" ")[0] + ")";
     signInBtn.onclick = handleLogout;
     joinBtn.textContent = state.currentUser.subscriptionActive ? "Manage" : "Join now";
-    adminBtn.classList.toggle("hidden", !state.currentUser.isAdmin);
   } else {
     badge.classList.add("hidden");
     signInBtn.textContent = "Sign in";
     signInBtn.onclick = () => openAuthModal("signin");
     joinBtn.textContent = "Join now";
-    adminBtn.classList.add("hidden");
   }
 }
 
@@ -833,7 +830,6 @@ function wireNav() {
   document.getElementById("hero-watch").addEventListener("click", () => scrollToId("library"));
   document.getElementById("nav-join").addEventListener("click", () => scrollToId("membership"));
   document.getElementById("nav-signin").addEventListener("click", () => openAuthModal("signin"));
-  document.getElementById("nav-admin").addEventListener("click", () => { window.location.href = "admin.html"; });
   document.getElementById("nav-dashboard").addEventListener("click", () => { window.location.href = "dashboard.html"; });
 
   const menuToggle = document.getElementById("menu-toggle");

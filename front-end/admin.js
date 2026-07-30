@@ -19,6 +19,7 @@ async function api(path, options = {}) {
 }
 
 const BELTS = ["white", "yellow", "orange", "green", "blue", "purple", "brown", "black"];
+let currentAdmin = null;
 
 async function init() {
   document.getElementById("admin-login-form").addEventListener("submit", handleLogin);
@@ -29,6 +30,8 @@ async function init() {
   document.getElementById("add-guide-form").addEventListener("submit", handleAddGuide);
   document.getElementById("add-announcement-form").addEventListener("submit", handleAddAnnouncement);
   document.getElementById("add-live-form").addEventListener("submit", handleAddLiveSession);
+  document.getElementById("add-resource-form").addEventListener("submit", handleAddResource);
+  document.getElementById("add-account-form").addEventListener("submit", handleAddAccount);
   wireMobileMenu();
 
   const token = getToken();
@@ -40,6 +43,7 @@ async function init() {
       showLoginGate("Signed in, but this account doesn't have admin access.");
       return;
     }
+    currentAdmin = user;
     showDashboard();
   } catch {
     clearToken();
@@ -60,13 +64,16 @@ function showDashboard() {
   document.getElementById("admin-login-gate").classList.add("hidden");
   document.getElementById("admin-dashboard").classList.remove("hidden");
   document.getElementById("admin-logout").classList.remove("hidden");
+  document.getElementById("super-admin-panels").classList.toggle("hidden", !currentAdmin.isSuperAdmin);
   loadContent();
   loadVideos();
   loadEvents();
   loadGuides();
   loadAnnouncements();
   loadLiveSessions();
+  loadResources();
   document.getElementById("user-search-results").innerHTML = "";
+  if (currentAdmin.isSuperAdmin) loadStaffDirectory();
 }
 
 async function handleLogin(e) {
@@ -79,6 +86,7 @@ async function handleLogin(e) {
       showLoginGate("That account doesn't have admin access.");
       return;
     }
+    currentAdmin = data.user;
     setToken(data.token);
     showDashboard();
   } catch (err) {
@@ -346,10 +354,14 @@ async function handleUserSearch(e) {
 function renderUserRow(u) {
   const row = document.createElement("div");
   row.className = "video-row";
+  const isStaff = u.role === "admin" || u.role === "super_admin";
+  const locked = isStaff && !currentAdmin.isSuperAdmin;
   row.innerHTML = `
     <div style="font-size:14px;margin-bottom:8px;">
       <strong>${escapeHTML(u.name)}</strong> · ${escapeHTML(u.email)} · ${escapeHTML(u.subscriptionTier || "no plan")}
+      ${isStaff ? ` · <span style="color:var(--gold);">${escapeHTML(u.role.replace("_", " "))}</span>` : ""}
     </div>
+    ${locked ? `<p style="color:var(--muted);font-size:13px;">Only a super admin can edit staff accounts.</p>` : `
     <div class="video-row-grid">
       <label><span class="field-label">Belt</span>
         <select data-f="currentBelt">${BELTS.map((b) => `<option value="${b}" ${b === u.currentBelt ? "selected" : ""}>${b}</option>`).join("")}</select>
@@ -364,7 +376,10 @@ function renderUserRow(u) {
       <button class="btn btn-primary" data-action="save">Save</button>
       <span class="save-status" style="font-size:12px;color:var(--green-belt);"></span>
     </div>
+    `}
   `;
+
+  if (locked) return row;
 
   row.querySelector('[data-action="save"]').addEventListener("click", async () => {
     const status = row.querySelector(".save-status");
@@ -578,6 +593,161 @@ async function handleAddLiveSession(e) {
   } catch (err) {
     alert(err.message);
   }
+}
+
+/* ---------------- RESOURCE CARDS ---------------- */
+
+const RESOURCE_CATEGORIES = ["terminology", "philosophy", "grading", "instructor"];
+
+async function loadResources() {
+  const list = document.getElementById("resource-list");
+  list.innerHTML = `<p class="loading-note">Loading…</p>`;
+  try {
+    const grouped = await api("/resources");
+    list.innerHTML = "";
+    let count = 0;
+    RESOURCE_CATEGORIES.forEach((cat) => {
+      (grouped[cat] || []).forEach((r) => {
+        count++;
+        list.appendChild(renderResourceRow({ ...r, category: cat }));
+      });
+    });
+    if (count === 0) list.innerHTML = `<p class="loading-note">No resource cards yet.</p>`;
+  } catch (err) {
+    list.innerHTML = `<p class="error-note">${escapeHTML(err.message)}</p>`;
+  }
+}
+
+function renderResourceRow(r) {
+  const row = document.createElement("div");
+  row.className = "video-row";
+  row.innerHTML = `
+    <div class="video-row-grid">
+      <label><span class="field-label">Category</span>
+        <select data-f="category">${RESOURCE_CATEGORIES.map((c) => `<option value="${c}" ${c === r.category ? "selected" : ""}>${c}</option>`).join("")}</select>
+      </label>
+      <label class="field-checkbox"><input type="checkbox" data-f="premium" ${r.premium ? "checked" : ""} /> Members only</label>
+      <label style="grid-column:1/-1;"><span class="field-label">Title</span><input data-f="title" value="${escapeHTML(r.title)}" /></label>
+      <label style="grid-column:1/-1;"><span class="field-label">Body</span><input data-f="body" value="${escapeHTML(r.body || "")}" /></label>
+    </div>
+    <div class="row-actions">
+      <button class="btn btn-primary" data-action="save">Save</button>
+      <button class="btn btn-danger" data-action="delete">Delete</button>
+      <span class="save-status" style="font-size:12px;color:var(--green-belt);"></span>
+    </div>
+  `;
+
+  row.querySelector('[data-action="save"]').addEventListener("click", async () => {
+    const status = row.querySelector(".save-status");
+    const get = (f) => row.querySelector(`[data-f="${f}"]`);
+    const payload = {
+      category: get("category").value,
+      title: get("title").value,
+      body: get("body").value,
+      premium: get("premium").checked,
+    };
+    try {
+      await api(`/admin/resources/${r.id}`, { method: "PUT", body: JSON.stringify(payload) });
+      status.style.color = "var(--green-belt)";
+      status.textContent = "Saved";
+      setTimeout(() => (status.textContent = ""), 2000);
+    } catch (err) {
+      status.style.color = "var(--red)";
+      status.textContent = err.message;
+    }
+  });
+
+  row.querySelector('[data-action="delete"]').addEventListener("click", async () => {
+    if (!confirm(`Delete "${r.title}"? This can't be undone.`)) return;
+    try {
+      await api(`/admin/resources/${r.id}`, { method: "DELETE" });
+      row.remove();
+    } catch (err) {
+      alert(err.message);
+    }
+  });
+
+  return row;
+}
+
+async function handleAddResource(e) {
+  e.preventDefault();
+  const val = (id) => document.getElementById(id).value;
+  const payload = {
+    category: val("nr-category"),
+    title: val("nr-title"),
+    body: val("nr-body"),
+    premium: document.getElementById("nr-premium").checked,
+  };
+  try {
+    await api("/admin/resources", { method: "POST", body: JSON.stringify(payload) });
+    e.target.reset();
+    loadResources();
+  } catch (err) {
+    alert(err.message);
+  }
+}
+
+/* ---------------- SUPER ADMIN: ACCOUNTS & STAFF ---------------- */
+
+async function handleAddAccount(e) {
+  e.preventDefault();
+  const errEl = document.getElementById("add-account-error");
+  errEl.classList.add("hidden");
+  const payload = {
+    name: document.getElementById("nacc-name").value,
+    email: document.getElementById("nacc-email").value,
+    password: document.getElementById("nacc-password").value,
+    role: document.getElementById("nacc-role").value,
+  };
+  try {
+    await api("/admin/accounts", { method: "POST", body: JSON.stringify(payload) });
+    e.target.reset();
+    loadStaffDirectory();
+  } catch (err) {
+    errEl.textContent = err.message;
+    errEl.classList.remove("hidden");
+  }
+}
+
+async function loadStaffDirectory() {
+  const list = document.getElementById("staff-list");
+  list.innerHTML = `<p class="loading-note">Loading…</p>`;
+  try {
+    const staff = await api("/admin/users?role=admin");
+    list.innerHTML = "";
+    staff.forEach((u) => list.appendChild(renderStaffRow(u)));
+    if (staff.length === 0) list.innerHTML = `<p class="loading-note">No other admin accounts yet.</p>`;
+  } catch (err) {
+    list.innerHTML = `<p class="error-note">${escapeHTML(err.message)}</p>`;
+  }
+}
+
+function renderStaffRow(u) {
+  const row = document.createElement("div");
+  row.className = "content-row";
+  const isSuper = u.role === "super_admin";
+  row.innerHTML = `
+    <span class="content-row-key">${escapeHTML(u.name)} · ${escapeHTML(u.email)} · ${escapeHTML(u.role.replace("_", " "))}</span>
+    <div class="row-actions">
+      ${isSuper
+        ? `<span style="font-size:12px;color:var(--muted);">Change directly in the database only</span>`
+        : `<button class="btn btn-danger" type="button">Revoke admin access</button>`}
+      <span class="save-status" style="font-size:12px;color:var(--green-belt);"></span>
+    </div>
+  `;
+  if (!isSuper) {
+    row.querySelector("button").addEventListener("click", async () => {
+      if (!confirm(`Revoke admin access for ${u.name}? They'll become a regular user account.`)) return;
+      try {
+        await api(`/admin/users/${u.id}/role`, { method: "PUT", body: JSON.stringify({ role: "user" }) });
+        row.remove();
+      } catch (err) {
+        alert(err.message);
+      }
+    });
+  }
+  return row;
 }
 
 function escapeHTML(str) {

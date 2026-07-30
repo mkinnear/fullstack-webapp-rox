@@ -40,6 +40,16 @@ foreach ($userProgressCols as $col => $def) {
     $pdo->exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS $col $def");
 }
 
+// --- Role-based access (user / admin / super_admin) ---
+// 'super_admin' is never created by the app -- it only ever exists because a
+// developer inserted it directly via psql. This migration never writes that
+// value; it only ever reads/preserves it.
+$pdo->exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'user'");
+// One-time backfill for accounts that predate the role column: anyone who was
+// flagged is_admin under the old system becomes a regular 'admin' (never
+// super_admin -- that promotion always requires a manual DB step).
+$pdo->exec("UPDATE users SET role = 'admin' WHERE is_admin = TRUE AND role = 'user'");
+
 $pdo->exec("CREATE TABLE IF NOT EXISTS sessions (
     token_hash TEXT PRIMARY KEY,
     user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -332,11 +342,16 @@ if ($contentCount == 0) {
     }
 }
 
-// Promote a specific account to admin, if ADMIN_EMAIL is set and that
-// account already exists. Safe to run on every deploy (idempotent).
+// Promote a specific account to (regular) admin, if ADMIN_EMAIL is set and
+// that account already exists. Safe to run on every deploy (idempotent).
+// This can only ever grant 'admin', never 'super_admin' -- and it never
+// touches an account that's already super_admin.
 $adminEmail = getenv('ADMIN_EMAIL');
 if ($adminEmail) {
-    $stmt = $pdo->prepare('UPDATE users SET is_admin = TRUE WHERE email = :email');
+    $stmt = $pdo->prepare(
+        "UPDATE users SET is_admin = TRUE, role = 'admin'
+         WHERE email = :email AND role <> 'super_admin'"
+    );
     $stmt->execute(['email' => strtolower(trim($adminEmail))]);
     if ($stmt->rowCount() > 0) {
         echo "Promoted $adminEmail to admin\n";

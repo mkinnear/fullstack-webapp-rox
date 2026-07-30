@@ -472,12 +472,6 @@ function wireNav() {
     window.location.href = "index.html";
   });
 
-  const adminBtn = document.getElementById("nav-admin");
-  if (state.user.isAdmin) {
-    adminBtn.classList.remove("hidden");
-    adminBtn.addEventListener("click", () => { window.location.href = "admin.html"; });
-  }
-
   const badge = document.getElementById("tier-badge");
   if (state.user.subscriptionTier) {
     badge.textContent = state.user.subscriptionActive ? "Active member" : "Membership inactive";

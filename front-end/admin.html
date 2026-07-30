@@ -181,6 +181,60 @@
       <h2 class="disp" style="font-size:26px;margin:0 0 4px;">LIVE SESSIONS</h2>
       <div id="live-session-list"></div>
     </section>
+
+    <section class="admin-panel">
+      <h2 class="disp" style="font-size:26px;margin:0 0 4px;">ADD A RESOURCE CARD</h2>
+      <p style="color:var(--muted);font-size:14px;margin-bottom:20px;">Powers the Grading Prep, Terminology, Philosophy and Instructor Development sections on the dashboard.</p>
+      <form id="add-resource-form" class="admin-video-form">
+        <label class="field"><span class="field-label">Category</span>
+          <select class="field-input" id="nr-category">
+            <option value="terminology">Terminology</option>
+            <option value="philosophy">Philosophy</option>
+            <option value="grading">Grading prep</option>
+            <option value="instructor">Instructor development</option>
+          </select>
+        </label>
+        <label class="field admin-field-wide"><span class="field-label">Title</span><input class="field-input" id="nr-title" required /></label>
+        <label class="field admin-field-wide"><span class="field-label">Body</span><input class="field-input" id="nr-body" /></label>
+        <label class="field-checkbox"><input type="checkbox" id="nr-premium" /> Members only</label>
+        <button type="submit" class="btn btn-primary">Add card</button>
+      </form>
+    </section>
+
+    <section class="admin-panel">
+      <h2 class="disp" style="font-size:26px;margin:0 0 4px;">RESOURCE CARDS</h2>
+      <div id="resource-list"></div>
+    </section>
+
+    <!-- SUPER ADMIN ONLY -->
+    <div id="super-admin-panels" class="hidden">
+      <section class="admin-panel" style="border-color:var(--gold);">
+        <h2 class="disp" style="font-size:26px;margin:0 0 4px;">CREATE AN ACCOUNT</h2>
+        <p style="color:var(--muted);font-size:14px;margin-bottom:20px;">
+          Super admin only. Creates the account directly — no email verification step. Can grant regular admin access,
+          but never super admin: that role can only ever be set directly in the database.
+        </p>
+        <form id="add-account-form" class="admin-video-form">
+          <label class="field"><span class="field-label">Name</span><input class="field-input" id="nacc-name" required /></label>
+          <label class="field"><span class="field-label">Email</span><input class="field-input" id="nacc-email" type="email" required /></label>
+          <label class="field"><span class="field-label">Password</span><input class="field-input" id="nacc-password" type="password" required minlength="8" /></label>
+          <label class="field"><span class="field-label">Role</span>
+            <select class="field-input" id="nacc-role">
+              <option value="user">Regular user</option>
+              <option value="admin">Admin</option>
+            </select>
+          </label>
+          <p class="field-error hidden" id="add-account-error"></p>
+          <button type="submit" class="btn btn-primary">Create account</button>
+        </form>
+      </section>
+
+      <section class="admin-panel" style="border-color:var(--gold);">
+        <h2 class="disp" style="font-size:26px;margin:0 0 4px;">STAFF DIRECTORY</h2>
+        <p style="color:var(--muted);font-size:14px;margin-bottom:20px;">Every admin account. Revoke access to drop someone back to a regular user account. The super admin account isn't shown here — it can only be changed directly in the database.</p>
+        <div id="staff-list"></div>
+      </section>
+    </div>
   </div>
 </main>
 
