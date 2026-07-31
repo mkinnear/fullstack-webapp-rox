@@ -33,6 +33,8 @@ async function init() {
   document.getElementById("add-resource-form").addEventListener("submit", handleAddResource);
   document.getElementById("add-account-form").addEventListener("submit", handleAddAccount);
   wireMobileMenu();
+  wireAreaChooser();
+  wireLazyAccordions();
 
   const token = getToken();
   if (!token) return showLoginGate();
@@ -64,16 +66,61 @@ function showDashboard() {
   document.getElementById("admin-login-gate").classList.add("hidden");
   document.getElementById("admin-dashboard").classList.remove("hidden");
   document.getElementById("admin-logout").classList.remove("hidden");
-  document.getElementById("super-admin-panels").classList.toggle("hidden", !currentAdmin.isSuperAdmin);
-  loadContent();
-  loadVideos();
-  loadEvents();
-  loadGuides();
-  loadAnnouncements();
-  loadLiveSessions();
-  loadResources();
+  document.getElementById("area-card-accounts").classList.toggle("hidden", !currentAdmin.isSuperAdmin);
   document.getElementById("user-search-results").innerHTML = "";
-  if (currentAdmin.isSuperAdmin) loadStaffDirectory();
+  showAreaChooser();
+}
+
+function showAreaChooser() {
+  document.getElementById("area-chooser").classList.remove("hidden");
+  document.getElementById("area-breadcrumb").classList.add("hidden");
+  document.querySelectorAll(".admin-area").forEach((el) => el.classList.add("hidden"));
+}
+
+const AREA_LABELS = { public: "Public Landing Page", dashboard: "Student Dashboard", accounts: "Accounts & Staff" };
+
+function showArea(area) {
+  document.getElementById("area-chooser").classList.add("hidden");
+  document.getElementById("area-breadcrumb").classList.remove("hidden");
+  document.getElementById("area-heading").textContent = AREA_LABELS[area] || "";
+  document.querySelectorAll(".admin-area").forEach((el) => el.classList.add("hidden"));
+  document.getElementById("area-" + area).classList.remove("hidden");
+}
+
+function wireAreaChooser() {
+  document.querySelectorAll(".area-card").forEach((card) => {
+    card.addEventListener("click", () => showArea(card.dataset.area));
+  });
+  document.getElementById("back-to-chooser").addEventListener("click", showAreaChooser);
+}
+
+/**
+ * Each admin section only fetches its data the first time it's actually
+ * opened, not all at once on login -- keeps the admin panel responsive as
+ * more videos/guides/announcements/etc. accumulate over time, and avoids
+ * firing seven API calls before the admin has even chosen what to manage.
+ */
+function wireLazyAccordions() {
+  const loaders = {
+    "acc-content": loadContent,
+    "acc-videos": loadVideos,
+    "acc-events": loadEvents,
+    "acc-guides": loadGuides,
+    "acc-announcements": loadAnnouncements,
+    "acc-live": loadLiveSessions,
+    "acc-resources": loadResources,
+    "acc-staff": loadStaffDirectory,
+  };
+  Object.entries(loaders).forEach(([id, loadFn]) => {
+    const details = document.getElementById(id);
+    if (!details) return;
+    details.addEventListener("toggle", () => {
+      if (details.open && !details.dataset.loaded) {
+        details.dataset.loaded = "true";
+        loadFn();
+      }
+    });
+  });
 }
 
 async function handleLogin(e) {

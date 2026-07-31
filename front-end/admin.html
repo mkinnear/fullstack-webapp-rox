@@ -48,193 +48,240 @@
   <!-- ADMIN DASHBOARD (hidden until authenticated as admin) -->
   <div id="admin-dashboard" class="hidden">
 
-    <section class="admin-panel">
-      <h2 class="disp" style="font-size:26px;margin:0 0 4px;">SITE TEXT</h2>
-      <p style="color:var(--muted);font-size:14px;margin-bottom:20px;">
-        Edits appear on the live site immediately. Stored and rendered as plain text — no HTML formatting.
-      </p>
-      <div id="content-list"></div>
-    </section>
-
-    <section class="admin-panel">
-      <h2 class="disp" style="font-size:26px;margin:0 0 4px;">ADD A VIDEO</h2>
-      <form id="add-video-form" class="admin-video-form">
-        <label class="field"><span class="field-label">Title</span><input class="field-input" id="nv-title" required /></label>
-        <label class="field"><span class="field-label">Belt</span>
-          <select class="field-input" id="nv-belt">
-            <option value="white">White</option><option value="yellow">Yellow</option><option value="orange">Orange</option>
-            <option value="green">Green</option><option value="blue">Blue</option><option value="purple">Purple</option>
-            <option value="brown">Brown</option><option value="black">Black</option>
-          </select>
-        </label>
-        <label class="field"><span class="field-label">Lesson #</span><input class="field-input" id="nv-lesson" type="number" min="1" value="1" /></label>
-        <label class="field"><span class="field-label">Type</span>
-          <select class="field-input" id="nv-type">
-            <option>Kihon</option><option>Kata</option><option>Kumite</option><option>Bunkai</option><option>Conditioning</option>
-          </select>
-        </label>
-        <label class="field"><span class="field-label">Duration</span><input class="field-input" id="nv-duration" placeholder="8:12" /></label>
-        <label class="field"><span class="field-label">Instructor</span><input class="field-input" id="nv-instructor" /></label>
-        <label class="field admin-field-wide"><span class="field-label">Caption</span><input class="field-input" id="nv-caption" /></label>
-        <label class="field admin-field-wide"><span class="field-label">Video URL (YouTube/Vimeo/hosted link)</span><input class="field-input" id="nv-url" placeholder="https://..." /></label>
-        <label class="field-checkbox"><input type="checkbox" id="nv-premium" checked /> Premium (members only)</label>
-        <button type="submit" class="btn btn-primary">Add video</button>
-      </form>
-    </section>
-
-    <section class="admin-panel">
-      <h2 class="disp" style="font-size:26px;margin:0 0 4px;">VIDEO LIBRARY</h2>
-      <p style="color:var(--muted);font-size:14px;margin-bottom:20px;">Edit any field then press Save on that row. Delete removes it immediately.</p>
-      <div id="video-list"></div>
-    </section>
-
-    <section class="admin-panel">
-      <h2 class="disp" style="font-size:26px;margin:0 0 4px;">ADD AN EVENT</h2>
-      <form id="add-event-form" class="admin-video-form">
-        <label class="field"><span class="field-label">Title</span><input class="field-input" id="ne-title" required /></label>
-        <label class="field"><span class="field-label">Date</span><input class="field-input" id="ne-date" type="date" /></label>
-        <label class="field"><span class="field-label">Location</span><input class="field-input" id="ne-location" /></label>
-        <label class="field admin-field-wide"><span class="field-label">Description</span><input class="field-input" id="ne-description" /></label>
-        <label class="field admin-field-wide"><span class="field-label">Image URL (optional)</span><input class="field-input" id="ne-image" placeholder="https://..." /></label>
-        <label class="field admin-field-wide"><span class="field-label">Link URL (optional, e.g. registration)</span><input class="field-input" id="ne-link" placeholder="https://..." /></label>
-        <button type="submit" class="btn btn-primary">Add event</button>
-      </form>
-    </section>
-
-    <section class="admin-panel">
-      <h2 class="disp" style="font-size:26px;margin:0 0 4px;">EVENTS</h2>
-      <p style="color:var(--muted);font-size:14px;margin-bottom:20px;">Shown as a carousel on the homepage, soonest date first.</p>
-      <div id="event-list"></div>
-    </section>
-
-    <section class="admin-panel">
-      <h2 class="disp" style="font-size:26px;margin:0 0 4px;">STUDENT BELT &amp; GRADING</h2>
-      <p style="color:var(--muted);font-size:14px;margin-bottom:20px;">Search a student to update their rank, stripes and grading pathway on the dashboard.</p>
-      <form id="user-search-form" class="admin-form-narrow" style="margin-bottom:18px;">
-        <label class="field"><span class="field-label">Search by name or email</span><input class="field-input" id="user-search-input" placeholder="Start typing…" /></label>
-        <button type="submit" class="btn btn-primary">Search</button>
-      </form>
-      <div id="user-search-results"></div>
-    </section>
-
-    <section class="admin-panel">
-      <h2 class="disp" style="font-size:26px;margin:0 0 4px;">ADD A TRAINING GUIDE</h2>
-      <form id="add-guide-form" class="admin-video-form">
-        <label class="field"><span class="field-label">Title</span><input class="field-input" id="ng-title" required /></label>
-        <label class="field"><span class="field-label">Belt</span>
-          <select class="field-input" id="ng-belt">
-            <option value="all">All ranks</option>
-            <option value="white">White</option><option value="yellow">Yellow</option><option value="orange">Orange</option>
-            <option value="green">Green</option><option value="blue">Blue</option><option value="purple">Purple</option>
-            <option value="brown">Brown</option><option value="black">Black</option>
-          </select>
-        </label>
-        <label class="field admin-field-wide"><span class="field-label">Description</span><input class="field-input" id="ng-description" /></label>
-        <label class="field admin-field-wide"><span class="field-label">File URL (PDF link)</span><input class="field-input" id="ng-url" placeholder="https://..." /></label>
-        <label class="field-checkbox"><input type="checkbox" id="ng-premium" checked /> Premium (members only)</label>
-        <button type="submit" class="btn btn-primary">Add guide</button>
-      </form>
-    </section>
-
-    <section class="admin-panel">
-      <h2 class="disp" style="font-size:26px;margin:0 0 4px;">TRAINING GUIDES</h2>
-      <div id="guide-list"></div>
-    </section>
-
-    <section class="admin-panel">
-      <h2 class="disp" style="font-size:26px;margin:0 0 4px;">POST AN ANNOUNCEMENT</h2>
-      <form id="add-announcement-form" class="admin-video-form">
-        <label class="field admin-field-wide"><span class="field-label">Title</span><input class="field-input" id="na-title" required /></label>
-        <label class="field admin-field-wide"><span class="field-label">Body</span><input class="field-input" id="na-body" /></label>
-        <label class="field-checkbox"><input type="checkbox" id="na-pinned" /> Pin to top</label>
-        <button type="submit" class="btn btn-primary">Post</button>
-      </form>
-    </section>
-
-    <section class="admin-panel">
-      <h2 class="disp" style="font-size:26px;margin:0 0 4px;">ANNOUNCEMENTS</h2>
-      <div id="announcement-list"></div>
-    </section>
-
-    <section class="admin-panel">
-      <h2 class="disp" style="font-size:26px;margin:0 0 4px;">SCHEDULE A LIVE SESSION</h2>
-      <form id="add-live-form" class="admin-video-form">
-        <label class="field"><span class="field-label">Title</span><input class="field-input" id="nl-title" required /></label>
-        <label class="field"><span class="field-label">Date &amp; time</span><input class="field-input" id="nl-datetime" type="datetime-local" required /></label>
-        <label class="field"><span class="field-label">Duration (min)</span><input class="field-input" id="nl-duration" type="number" min="15" value="60" /></label>
-        <label class="field"><span class="field-label">Instructor</span><input class="field-input" id="nl-instructor" /></label>
-        <label class="field"><span class="field-label">Focus rank</span>
-          <select class="field-input" id="nl-belt">
-            <option value="all">All ranks</option>
-            <option value="white">White</option><option value="yellow">Yellow</option><option value="orange">Orange</option>
-            <option value="green">Green</option><option value="blue">Blue</option><option value="purple">Purple</option>
-            <option value="brown">Brown</option><option value="black">Black</option>
-          </select>
-        </label>
-        <label class="field admin-field-wide"><span class="field-label">Description</span><input class="field-input" id="nl-description" /></label>
-        <label class="field admin-field-wide"><span class="field-label">Join URL</span><input class="field-input" id="nl-url" placeholder="https://..." /></label>
-        <button type="submit" class="btn btn-primary">Schedule session</button>
-      </form>
-    </section>
-
-    <section class="admin-panel">
-      <h2 class="disp" style="font-size:26px;margin:0 0 4px;">LIVE SESSIONS</h2>
-      <div id="live-session-list"></div>
-    </section>
-
-    <section class="admin-panel">
-      <h2 class="disp" style="font-size:26px;margin:0 0 4px;">ADD A RESOURCE CARD</h2>
-      <p style="color:var(--muted);font-size:14px;margin-bottom:20px;">Powers the Grading Prep, Terminology, Philosophy and Instructor Development sections on the dashboard.</p>
-      <form id="add-resource-form" class="admin-video-form">
-        <label class="field"><span class="field-label">Category</span>
-          <select class="field-input" id="nr-category">
-            <option value="terminology">Terminology</option>
-            <option value="philosophy">Philosophy</option>
-            <option value="grading">Grading prep</option>
-            <option value="instructor">Instructor development</option>
-          </select>
-        </label>
-        <label class="field admin-field-wide"><span class="field-label">Title</span><input class="field-input" id="nr-title" required /></label>
-        <label class="field admin-field-wide"><span class="field-label">Body</span><input class="field-input" id="nr-body" /></label>
-        <label class="field-checkbox"><input type="checkbox" id="nr-premium" /> Members only</label>
-        <button type="submit" class="btn btn-primary">Add card</button>
-      </form>
-    </section>
-
-    <section class="admin-panel">
-      <h2 class="disp" style="font-size:26px;margin:0 0 4px;">RESOURCE CARDS</h2>
-      <div id="resource-list"></div>
-    </section>
-
-    <!-- SUPER ADMIN ONLY -->
-    <div id="super-admin-panels" class="hidden">
-      <section class="admin-panel" style="border-color:var(--gold);">
-        <h2 class="disp" style="font-size:26px;margin:0 0 4px;">CREATE AN ACCOUNT</h2>
-        <p style="color:var(--muted);font-size:14px;margin-bottom:20px;">
-          Super admin only. Creates the account directly — no email verification step. Can grant regular admin access,
-          but never super admin: that role can only ever be set directly in the database.
-        </p>
-        <form id="add-account-form" class="admin-video-form">
-          <label class="field"><span class="field-label">Name</span><input class="field-input" id="nacc-name" required /></label>
-          <label class="field"><span class="field-label">Email</span><input class="field-input" id="nacc-email" type="email" required /></label>
-          <label class="field"><span class="field-label">Password</span><input class="field-input" id="nacc-password" type="password" required minlength="8" /></label>
-          <label class="field"><span class="field-label">Role</span>
-            <select class="field-input" id="nacc-role">
-              <option value="user">Regular user</option>
-              <option value="admin">Admin</option>
-            </select>
-          </label>
-          <p class="field-error hidden" id="add-account-error"></p>
-          <button type="submit" class="btn btn-primary">Create account</button>
-        </form>
-      </section>
-
-      <section class="admin-panel" style="border-color:var(--gold);">
-        <h2 class="disp" style="font-size:26px;margin:0 0 4px;">STAFF DIRECTORY</h2>
-        <p style="color:var(--muted);font-size:14px;margin-bottom:20px;">Every admin account. Revoke access to drop someone back to a regular user account. The super admin account isn't shown here — it can only be changed directly in the database.</p>
-        <div id="staff-list"></div>
-      </section>
+    <!-- AREA CHOOSER -->
+    <div id="area-chooser">
+      <p class="eyebrow">Admin</p>
+      <h2 class="disp" style="font-size:32px;margin:0 0 20px;">WHAT DO YOU WANT TO MANAGE?</h2>
+      <div class="area-cards">
+        <button class="area-card" data-area="public">
+          <span class="area-card-title">Public Landing Page</span>
+          <span class="area-card-desc">Hero &amp; section text, upcoming events</span>
+        </button>
+        <button class="area-card" data-area="dashboard">
+          <span class="area-card-title">Student Dashboard</span>
+          <span class="area-card-desc">Video library, guides, announcements, live sessions, resources, student belts</span>
+        </button>
+        <button class="area-card hidden" id="area-card-accounts" data-area="accounts">
+          <span class="area-card-title">Accounts &amp; Staff</span>
+          <span class="area-card-desc">Create accounts, manage admin access</span>
+        </button>
+      </div>
     </div>
+
+    <!-- BREADCRUMB -->
+    <div id="area-breadcrumb" class="hidden">
+      <button class="link-btn" id="back-to-chooser">← Choose a different area</button>
+      <h2 class="disp" id="area-heading" style="font-size:28px;margin:14px 0 24px;"></h2>
+    </div>
+
+    <!-- PUBLIC LANDING PAGE -->
+    <div id="area-public" class="admin-area hidden">
+
+      <details class="admin-accordion" id="acc-content">
+        <summary>Site Text</summary>
+        <div class="admin-accordion-body">
+          <p style="color:var(--muted);font-size:14px;margin-bottom:20px;">
+            Edits appear on the live site immediately. Stored and rendered as plain text — no HTML formatting.
+          </p>
+          <div id="content-list"></div>
+        </div>
+      </details>
+
+      <details class="admin-accordion" id="acc-events">
+        <summary>Events</summary>
+        <div class="admin-accordion-body">
+          <h3 class="admin-subhead">Add an event</h3>
+          <form id="add-event-form" class="admin-video-form">
+            <label class="field"><span class="field-label">Title</span><input class="field-input" id="ne-title" required /></label>
+            <label class="field"><span class="field-label">Date</span><input class="field-input" id="ne-date" type="date" /></label>
+            <label class="field"><span class="field-label">Location</span><input class="field-input" id="ne-location" /></label>
+            <label class="field admin-field-wide"><span class="field-label">Description</span><input class="field-input" id="ne-description" /></label>
+            <label class="field admin-field-wide"><span class="field-label">Image URL (optional)</span><input class="field-input" id="ne-image" placeholder="https://..." /></label>
+            <label class="field admin-field-wide"><span class="field-label">Link URL (optional, e.g. registration)</span><input class="field-input" id="ne-link" placeholder="https://..." /></label>
+            <button type="submit" class="btn btn-primary">Add event</button>
+          </form>
+          <h3 class="admin-subhead">Current events</h3>
+          <p style="color:var(--muted);font-size:14px;margin-bottom:20px;">Shown as a carousel on the homepage, soonest date first.</p>
+          <div id="event-list"></div>
+        </div>
+      </details>
+
+    </div>
+
+    <!-- STUDENT DASHBOARD -->
+    <div id="area-dashboard" class="admin-area hidden">
+
+      <details class="admin-accordion" id="acc-videos">
+        <summary>Video Library <span class="admin-accordion-note">first 3 by order also preview on the homepage</span></summary>
+        <div class="admin-accordion-body">
+          <h3 class="admin-subhead">Add a video</h3>
+          <form id="add-video-form" class="admin-video-form">
+            <label class="field"><span class="field-label">Title</span><input class="field-input" id="nv-title" required /></label>
+            <label class="field"><span class="field-label">Belt</span>
+              <select class="field-input" id="nv-belt">
+                <option value="white">White</option><option value="yellow">Yellow</option><option value="orange">Orange</option>
+                <option value="green">Green</option><option value="blue">Blue</option><option value="purple">Purple</option>
+                <option value="brown">Brown</option><option value="black">Black</option>
+              </select>
+            </label>
+            <label class="field"><span class="field-label">Lesson #</span><input class="field-input" id="nv-lesson" type="number" min="1" value="1" /></label>
+            <label class="field"><span class="field-label">Type</span>
+              <select class="field-input" id="nv-type">
+                <option>Kihon</option><option>Kata</option><option>Kumite</option><option>Bunkai</option><option>Conditioning</option>
+              </select>
+            </label>
+            <label class="field"><span class="field-label">Duration</span><input class="field-input" id="nv-duration" placeholder="8:12" /></label>
+            <label class="field"><span class="field-label">Instructor</span><input class="field-input" id="nv-instructor" /></label>
+            <label class="field admin-field-wide"><span class="field-label">Caption</span><input class="field-input" id="nv-caption" /></label>
+            <label class="field admin-field-wide"><span class="field-label">Video URL (YouTube/Vimeo/hosted link)</span><input class="field-input" id="nv-url" placeholder="https://..." /></label>
+            <label class="field-checkbox"><input type="checkbox" id="nv-premium" checked /> Premium (members only)</label>
+            <button type="submit" class="btn btn-primary">Add video</button>
+          </form>
+          <h3 class="admin-subhead">Current videos</h3>
+          <p style="color:var(--muted);font-size:14px;margin-bottom:20px;">Edit any field then press Save on that row. Delete removes it immediately.</p>
+          <div id="video-list"></div>
+        </div>
+      </details>
+
+      <details class="admin-accordion" id="acc-guides">
+        <summary>Training Guides</summary>
+        <div class="admin-accordion-body">
+          <h3 class="admin-subhead">Add a training guide</h3>
+          <form id="add-guide-form" class="admin-video-form">
+            <label class="field"><span class="field-label">Title</span><input class="field-input" id="ng-title" required /></label>
+            <label class="field"><span class="field-label">Belt</span>
+              <select class="field-input" id="ng-belt">
+                <option value="all">All ranks</option>
+                <option value="white">White</option><option value="yellow">Yellow</option><option value="orange">Orange</option>
+                <option value="green">Green</option><option value="blue">Blue</option><option value="purple">Purple</option>
+                <option value="brown">Brown</option><option value="black">Black</option>
+              </select>
+            </label>
+            <label class="field admin-field-wide"><span class="field-label">Description</span><input class="field-input" id="ng-description" /></label>
+            <label class="field admin-field-wide"><span class="field-label">File URL (PDF link)</span><input class="field-input" id="ng-url" placeholder="https://..." /></label>
+            <label class="field-checkbox"><input type="checkbox" id="ng-premium" checked /> Premium (members only)</label>
+            <button type="submit" class="btn btn-primary">Add guide</button>
+          </form>
+          <h3 class="admin-subhead">Current guides</h3>
+          <div id="guide-list"></div>
+        </div>
+      </details>
+
+      <details class="admin-accordion" id="acc-announcements">
+        <summary>Announcements</summary>
+        <div class="admin-accordion-body">
+          <h3 class="admin-subhead">Post an announcement</h3>
+          <form id="add-announcement-form" class="admin-video-form">
+            <label class="field admin-field-wide"><span class="field-label">Title</span><input class="field-input" id="na-title" required /></label>
+            <label class="field admin-field-wide"><span class="field-label">Body</span><input class="field-input" id="na-body" /></label>
+            <label class="field-checkbox"><input type="checkbox" id="na-pinned" /> Pin to top</label>
+            <button type="submit" class="btn btn-primary">Post</button>
+          </form>
+          <h3 class="admin-subhead">Current announcements</h3>
+          <div id="announcement-list"></div>
+        </div>
+      </details>
+
+      <details class="admin-accordion" id="acc-live">
+        <summary>Live Sessions</summary>
+        <div class="admin-accordion-body">
+          <h3 class="admin-subhead">Schedule a live session</h3>
+          <form id="add-live-form" class="admin-video-form">
+            <label class="field"><span class="field-label">Title</span><input class="field-input" id="nl-title" required /></label>
+            <label class="field"><span class="field-label">Date &amp; time</span><input class="field-input" id="nl-datetime" type="datetime-local" required /></label>
+            <label class="field"><span class="field-label">Duration (min)</span><input class="field-input" id="nl-duration" type="number" min="15" value="60" /></label>
+            <label class="field"><span class="field-label">Instructor</span><input class="field-input" id="nl-instructor" /></label>
+            <label class="field"><span class="field-label">Focus rank</span>
+              <select class="field-input" id="nl-belt">
+                <option value="all">All ranks</option>
+                <option value="white">White</option><option value="yellow">Yellow</option><option value="orange">Orange</option>
+                <option value="green">Green</option><option value="blue">Blue</option><option value="purple">Purple</option>
+                <option value="brown">Brown</option><option value="black">Black</option>
+              </select>
+            </label>
+            <label class="field admin-field-wide"><span class="field-label">Description</span><input class="field-input" id="nl-description" /></label>
+            <label class="field admin-field-wide"><span class="field-label">Join URL</span><input class="field-input" id="nl-url" placeholder="https://..." /></label>
+            <button type="submit" class="btn btn-primary">Schedule session</button>
+          </form>
+          <h3 class="admin-subhead">Upcoming sessions</h3>
+          <div id="live-session-list"></div>
+        </div>
+      </details>
+
+      <details class="admin-accordion" id="acc-resources">
+        <summary>Resource Cards</summary>
+        <div class="admin-accordion-body">
+          <h3 class="admin-subhead">Add a resource card</h3>
+          <p style="color:var(--muted);font-size:14px;margin-bottom:20px;">Powers the Grading Prep, Terminology, Philosophy and Instructor Development sections on the dashboard.</p>
+          <form id="add-resource-form" class="admin-video-form">
+            <label class="field"><span class="field-label">Category</span>
+              <select class="field-input" id="nr-category">
+                <option value="terminology">Terminology</option>
+                <option value="philosophy">Philosophy</option>
+                <option value="grading">Grading prep</option>
+                <option value="instructor">Instructor development</option>
+              </select>
+            </label>
+            <label class="field admin-field-wide"><span class="field-label">Title</span><input class="field-input" id="nr-title" required /></label>
+            <label class="field admin-field-wide"><span class="field-label">Body</span><input class="field-input" id="nr-body" /></label>
+            <label class="field-checkbox"><input type="checkbox" id="nr-premium" /> Members only</label>
+            <button type="submit" class="btn btn-primary">Add card</button>
+          </form>
+          <h3 class="admin-subhead">Current cards</h3>
+          <div id="resource-list"></div>
+        </div>
+      </details>
+
+      <details class="admin-accordion" id="acc-belts">
+        <summary>Student Belt &amp; Grading</summary>
+        <div class="admin-accordion-body">
+          <p style="color:var(--muted);font-size:14px;margin-bottom:20px;">Search a student to update their rank, stripes and grading pathway on the dashboard.</p>
+          <form id="user-search-form" class="admin-form-narrow" style="margin-bottom:18px;">
+            <label class="field"><span class="field-label">Search by name or email</span><input class="field-input" id="user-search-input" placeholder="Start typing…" /></label>
+            <button type="submit" class="btn btn-primary">Search</button>
+          </form>
+          <div id="user-search-results"></div>
+        </div>
+      </details>
+
+    </div>
+
+    <!-- ACCOUNTS & STAFF (super admin only) -->
+    <div id="area-accounts" class="admin-area hidden">
+
+      <details class="admin-accordion admin-accordion-gold" id="acc-create-account">
+        <summary>Create an Account</summary>
+        <div class="admin-accordion-body">
+          <p style="color:var(--muted);font-size:14px;margin-bottom:20px;">
+            Creates the account directly — no email verification step. Can grant regular admin access,
+            but never super admin: that role can only ever be set directly in the database.
+          </p>
+          <form id="add-account-form" class="admin-video-form">
+            <label class="field"><span class="field-label">Name</span><input class="field-input" id="nacc-name" required /></label>
+            <label class="field"><span class="field-label">Email</span><input class="field-input" id="nacc-email" type="email" required /></label>
+            <label class="field"><span class="field-label">Password</span><input class="field-input" id="nacc-password" type="password" required minlength="8" /></label>
+            <label class="field"><span class="field-label">Role</span>
+              <select class="field-input" id="nacc-role">
+                <option value="user">Regular user</option>
+                <option value="admin">Admin</option>
+              </select>
+            </label>
+            <p class="field-error hidden" id="add-account-error"></p>
+            <button type="submit" class="btn btn-primary">Create account</button>
+          </form>
+        </div>
+      </details>
+
+      <details class="admin-accordion admin-accordion-gold" id="acc-staff">
+        <summary>Staff Directory</summary>
+        <div class="admin-accordion-body">
+          <p style="color:var(--muted);font-size:14px;margin-bottom:20px;">Every admin account. Revoke access to drop someone back to a regular user account. The super admin account isn't shown here — it can only be changed directly in the database.</p>
+          <div id="staff-list"></div>
+        </div>
+      </details>
+
+    </div>
+
   </div>
 </main>
 

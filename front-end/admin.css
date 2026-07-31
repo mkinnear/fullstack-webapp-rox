@@ -44,3 +44,40 @@
 
 .loading-note, .error-note { color: var(--muted); padding: 16px 0; }
 .error-note { color: var(--red); }
+
+/* ---------------- AREA CHOOSER ---------------- */
+.area-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
+.area-card {
+  display: flex; flex-direction: column; gap: 8px; text-align: left;
+  background: var(--panel); border: 1px solid var(--line); padding: 24px 22px;
+  cursor: pointer; transition: border-color 0.15s ease, transform 0.15s ease;
+}
+.area-card:hover { border-color: var(--gold); transform: translateY(-2px); }
+.area-card-title { font-size: 18px; font-weight: 700; color: var(--bone); }
+.area-card-desc { font-size: 13px; color: var(--muted); line-height: 1.5; }
+
+/* ---------------- ACCORDION SECTIONS ---------------- */
+.admin-area { display: flex; flex-direction: column; gap: 14px; }
+.admin-accordion {
+  background: var(--panel); border: 1px solid var(--line); overflow: hidden;
+}
+.admin-accordion-gold { border-color: var(--gold); }
+.admin-accordion > summary {
+  list-style: none; cursor: pointer; padding: 18px 22px;
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  font-family: 'Bebas Neue', sans-serif; font-size: 20px; letter-spacing: 0.02em; color: var(--bone);
+}
+.admin-accordion > summary::-webkit-details-marker { display: none; }
+.admin-accordion > summary::after {
+  content: "+"; font-family: sans-serif; font-size: 22px; font-weight: 300; color: var(--muted); flex-shrink: 0;
+  transition: transform 0.15s ease;
+}
+.admin-accordion[open] > summary::after { transform: rotate(45deg); }
+.admin-accordion > summary:hover { background: var(--panel-2); }
+.admin-accordion-note { font-family: 'Inter', sans-serif; font-size: 12px; color: var(--muted); font-weight: 400; letter-spacing: normal; }
+.admin-accordion-body { padding: 4px 22px 26px; border-top: 1px solid var(--line); }
+.admin-subhead {
+  font-family: 'Bebas Neue', sans-serif; font-size: 16px; letter-spacing: 0.02em; color: var(--gold);
+  margin: 22px 0 12px; text-transform: uppercase;
+}
+.admin-accordion-body > .admin-subhead:first-child { margin-top: 20px; }

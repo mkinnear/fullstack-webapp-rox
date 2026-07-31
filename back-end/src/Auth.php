@@ -1,20 +1,22 @@
 <?php
 
-const SESSION_LIFETIME_DAYS = 30;
+const SESSION_LIFETIME_DAYS = 30;      // regular members
+const ADMIN_SESSION_LIFETIME_HOURS = 12; // admin/super_admin -- higher privilege, shorter leash
 const OTP_LIFETIME_MINUTES = 10;
 
 /* ---------------- SESSIONS (hashed tokens) ---------------- */
 
-function createSession(PDO $pdo, int $userId): string {
+function createSession(PDO $pdo, int $userId, ?int $lifetimeHours = null): string {
+    $hours = $lifetimeHours ?? (SESSION_LIFETIME_DAYS * 24);
     $token = bin2hex(random_bytes(32));
     $stmt = $pdo->prepare(
         "INSERT INTO sessions (token_hash, user_id, expires_at)
-         VALUES (:hash, :user_id, NOW() + (:days || ' days')::interval)"
+         VALUES (:hash, :user_id, NOW() + (:hours || ' hours')::interval)"
     );
     $stmt->execute([
         'hash' => hash('sha256', $token),
         'user_id' => $userId,
-        'days' => SESSION_LIFETIME_DAYS,
+        'hours' => $hours,
     ]);
     return $token; // raw token goes to the client; only the hash is stored
 }

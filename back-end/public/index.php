@@ -194,7 +194,8 @@ if ($path === 'api/auth/login' && $method === 'POST') {
     $reset = $pdo->prepare('UPDATE users SET failed_login_attempts = 0, locked_until = NULL WHERE id = :id');
     $reset->execute(['id' => $user['id']]);
 
-    $token = createSession($pdo, (int) $user['id']);
+    $isStaff = in_array($user['role'] ?? 'user', ['admin', 'super_admin'], true);
+    $token = createSession($pdo, (int) $user['id'], $isStaff ? ADMIN_SESSION_LIFETIME_HOURS : null);
     echo json_encode(['token' => $token, 'user' => publicUser($user)]);
     exit;
 }
