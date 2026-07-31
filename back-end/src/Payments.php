@@ -28,8 +28,8 @@ function createStripeCheckoutSession(array $user, array $tier): array {
         ]],
         'client_reference_id' => (string) $user['id'],
         'customer_email' => $user['email'],
-        'success_url' => $frontendUrl . '/?checkout=success',
-        'cancel_url' => $frontendUrl . '/?checkout=cancelled',
+        'success_url' => $frontendUrl . '/dashboard.html?checkout=success',
+        'cancel_url' => $frontendUrl . '/dashboard.html?checkout=cancelled',
         'metadata' => ['user_id' => (string) $user['id'], 'tier_slug' => $tier['slug']],
     ];
 

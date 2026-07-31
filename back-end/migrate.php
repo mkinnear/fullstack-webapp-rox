@@ -336,8 +336,8 @@ if ($contentCount == 0) {
         'hero_title_line1' => 'TRAIN. LEARN.',
         'hero_title_line2' => 'GROW.',
         'hero_subtitle' => 'IKKO Academy is the official online learning platform preserving and sharing the teachings of IKKO Karate. From live sessions and a recorded lesson library to belt-specific curriculum, training guides and grading prep, we help students revisit lessons, deepen their understanding and keep developing between classes — extending, never replacing, the discipline and philosophy learned in the dojo.',
-        'library_title' => 'EVERY LESSON, BY RANK.',
-        'library_note' => "Filter by belt to see what's next on your path, or by technique type to drill a specific skill. Lessons are numbered in the order your dojo teaches them.",
+        'library_title' => 'A TASTE OF THE CURRICULUM.',
+        'library_note' => "A few sample lessons from the full library. Sign up to unlock the complete curriculum, organized by belt, in your student dashboard.",
         'membership_title' => 'PICK YOUR RANK.',
         'footer_note' => 'White belt to black. No shortcuts.',
     ];

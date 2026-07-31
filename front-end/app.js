@@ -59,9 +59,22 @@ async function api(path, options = {}) {
 
 /* ---------------- INIT / DATA LOAD ---------------- */
 
+async function redirectIfAuthenticated() {
+  if (!getToken()) return false;
+  try {
+    await api("/auth/me"); // confirms the token is still valid, not just present
+    window.location.replace("dashboard.html");
+    return true;
+  } catch {
+    clearToken(); // stale/expired token -- let them see the public page normally
+    return false;
+  }
+}
+
 async function init() {
+  if (await redirectIfAuthenticated()) return; // navigating away; don't render the public page at all
+
   renderBeltStrip();
-  renderFilters();
   wireNav();
   handleCheckoutRedirect();
 
@@ -146,39 +159,6 @@ function renderBeltStrip() {
   el.appendChild(tail);
 }
 
-function renderFilters() {
-  const beltEl = document.getElementById("belt-filters");
-  beltEl.innerHTML = "";
-  beltEl.appendChild(makePill("All ranks", state.beltFilter === "all", () => setBeltFilter("all")));
-  BELTS.forEach((b) => {
-    const pill = makePill(b.name, state.beltFilter === b.id, () => setBeltFilter(b.id));
-    const dot = document.createElement("span");
-    dot.className = "pill-dot";
-    dot.style.background = b.hex;
-    if (b.outline) dot.style.border = "1px solid #55524A";
-    pill.prepend(dot);
-    beltEl.appendChild(pill);
-  });
-
-  const typeEl = document.getElementById("type-filters");
-  typeEl.innerHTML = "";
-  typeEl.appendChild(makePill("All types", state.typeFilter === "all", () => setTypeFilter("all"), true));
-  TYPES.forEach((t) => {
-    typeEl.appendChild(makePill(t, state.typeFilter === t, () => setTypeFilter(t), true));
-  });
-}
-
-function makePill(label, active, onClick, subtle) {
-  const btn = document.createElement("button");
-  btn.className = "pill" + (active ? " active" : "") + (subtle ? " subtle" : "");
-  btn.textContent = label;
-  btn.addEventListener("click", onClick);
-  return btn;
-}
-
-function setBeltFilter(id) { state.beltFilter = id; renderFilters(); renderVideoGrid(); }
-function setTypeFilter(t) { state.typeFilter = t; renderFilters(); renderVideoGrid(); }
-
 function renderTierGrid() {
   const el = document.getElementById("tier-grid");
   el.innerHTML = "";
@@ -252,16 +232,13 @@ function renderVideoGrid() {
   const emptyNote = document.getElementById("empty-note");
   grid.innerHTML = "";
 
-  const filtered = state.videos.filter(
-    (v) => (state.beltFilter === "all" || v.belt === state.beltFilter) &&
-           (state.typeFilter === "all" || v.type === state.typeFilter)
-  );
+  // Public page shows a fixed, small teaser -- not a browsable library.
+  // The real library lives behind sign-in, in the student dashboard.
+  const preview = state.videos.slice(0, 3);
+  emptyNote.classList.toggle("hidden", preview.length > 0);
 
-  emptyNote.classList.toggle("hidden", filtered.length > 0);
-
-  filtered.forEach((v) => {
+  preview.forEach((v) => {
     const belt = beltById(v.belt);
-    const locked = isLocked(v);
 
     const card = document.createElement("div");
     card.className = "video-card";
@@ -272,7 +249,7 @@ function renderVideoGrid() {
 
     card.innerHTML = `
       <div class="video-thumb" style="background: linear-gradient(135deg, ${belt.hex} 0%, #121212 130%);">
-        <div class="video-play-circle">${locked ? lockIconHTML() : playIconHTML()}</div>
+        <div class="video-play-circle">${lockIconHTML()}</div>
         <span class="video-duration">${escapeHTML(v.duration)}</span>
         <span class="video-lesson-tag" style="background:${belt.hex};color:${belt.text};">${belt.name} · Lesson ${String(v.lesson).padStart(2, "0")}</span>
       </div>
@@ -413,42 +390,21 @@ function openOverlay(bodyHTML, onMount) {
 function openVideoModal(video) {
   const belt = beltById(video.belt);
 
-  if (isLocked(video)) {
-    openOverlay(`
-      <div class="modal-body" style="text-align:center;padding:50px 32px;">
-        <div class="lock-wrap" style="margin-bottom:16px;">${lockIconHTML()}</div>
-        <h3 class="disp" style="font-size:28px;margin:0 0 10px;">MEMBERS ONLY</h3>
-        <p style="color:var(--muted);margin-bottom:26px;max-width:380px;margin-left:auto;margin-right:auto;">
-          "${escapeHTML(video.title)}" is part of the full library. Join Black Belt membership to unlock every rank.
-        </p>
-        <button class="btn btn-primary" id="go-membership">View membership</button>
-      </div>
-    `, () => {
-      document.getElementById("go-membership").addEventListener("click", () => {
-        closeModal();
-        scrollToId("membership");
-      });
-    });
-    return;
-  }
-
-  const playerHTML = video.videoUrl
-    ? `<div class="video-embed">${embedForUrl(video.videoUrl)}</div>`
-    : `<div class="video-thumb" style="height:260px;background:linear-gradient(135deg, ${belt.hex} 0%, #121212 140%);">
-         <div class="video-play-circle" style="width:68px;height:68px;">${playIconHTML()}</div>
-       </div>`;
-
   openOverlay(`
-    <div>
-      ${playerHTML}
-      <div class="modal-body">
-        <span class="video-type">${escapeHTML(video.type)} · ${belt.name} belt · Lesson ${String(video.lesson).padStart(2, "0")}</span>
-        <h3 style="font-size:22px;margin:8px 0 6px;">${escapeHTML(video.title)}</h3>
-        <p style="color:var(--muted);font-size:14px;margin-bottom:10px;">${escapeHTML(video.instructor)} · ${escapeHTML(video.duration)}</p>
-        ${video.caption ? `<p style="font-size:14px;color:#D4D1C6;">${escapeHTML(video.caption)}</p>` : ""}
-      </div>
+    <div class="modal-body" style="text-align:center;padding:50px 32px;">
+      <div class="lock-wrap" style="margin-bottom:16px;">${lockIconHTML()}</div>
+      <span class="video-type">${escapeHTML(video.type)} · ${belt.name} belt · Lesson ${String(video.lesson).padStart(2, "0")}</span>
+      <h3 class="disp" style="font-size:26px;margin:10px 0 6px;">${escapeHTML(video.title)}</h3>
+      <p style="color:var(--muted);font-size:14px;margin-bottom:14px;">${escapeHTML(video.instructor)} · ${escapeHTML(video.duration)}</p>
+      ${video.caption ? `<p style="font-size:14px;color:#D4D1C6;margin-bottom:26px;max-width:380px;margin-left:auto;margin-right:auto;">${escapeHTML(video.caption)}</p>` : ""}
+      <button class="btn btn-hero" id="go-signup">Sign up to watch</button>
     </div>
-  `);
+  `, () => {
+    document.getElementById("go-signup").addEventListener("click", () => {
+      closeModal();
+      openAuthModal("signup");
+    });
+  });
 }
 
 /** Turns a plain YouTube/Vimeo URL into an embeddable iframe. Falls back to a plain link for anything else. */
@@ -548,7 +504,7 @@ function renderAuthModal() {
     `, () => {
       document.getElementById("verify-form").addEventListener("submit", handleVerifySubmit);
       document.getElementById("resend-otp").addEventListener("click", handleResendOtp);
-      document.getElementById("skip-verify").addEventListener("click", closeModal);
+      document.getElementById("skip-verify").addEventListener("click", () => { window.location.href = "dashboard.html"; });
     });
     return;
   }
@@ -709,13 +665,13 @@ async function resumePendingTierOrClose() {
     state.pendingTier = null;
     if (tier.priceCents === 0) {
       await subscribeToFreeTier(tier);
-      closeModal();
+      window.location.href = "dashboard.html";
     } else {
       closeModal();
-      await startCheckout(tier);
+      await startCheckout(tier); // redirects to Stripe; returns to dashboard.html on completion
     }
   } else {
-    closeModal();
+    window.location.href = "dashboard.html";
   }
 }
 
@@ -829,6 +785,7 @@ function wireNav() {
   document.getElementById("nav-membership").addEventListener("click", () => scrollToId("membership"));
   document.getElementById("hero-watch").addEventListener("click", () => scrollToId("library"));
   document.getElementById("nav-join").addEventListener("click", () => scrollToId("membership"));
+  document.getElementById("library-cta").addEventListener("click", () => openAuthModal("signup"));
   document.getElementById("nav-signin").addEventListener("click", () => openAuthModal("signin"));
   document.getElementById("nav-dashboard").addEventListener("click", () => { window.location.href = "dashboard.html"; });
 
@@ -863,3 +820,9 @@ function wireNav() {
 }
 
 document.addEventListener("DOMContentLoaded", init);
+
+// Some browsers restore a page from cache on back/forward navigation
+// without re-running the scripts above -- this catches that case too.
+window.addEventListener("pageshow", (e) => {
+  if (e.persisted) redirectIfAuthenticated();
+});

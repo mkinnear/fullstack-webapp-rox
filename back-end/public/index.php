@@ -48,6 +48,20 @@ function toBool($v): bool {
     return $v === true || $v === 't';
 }
 
+// PDOStatement::execute($params) binds everything as a string by default,
+// so a native PHP `false` becomes "" -- which Postgres rejects for a
+// boolean column ("invalid input syntax for type boolean"). This normalizes
+// any PHP bool in a params array to the string Postgres actually accepts,
+// before every dynamic UPDATE built from client input.
+function normalizeBoolParams(array $params): array {
+    foreach ($params as $key => $value) {
+        if (is_bool($value)) {
+            $params[$key] = $value ? 'true' : 'false';
+        }
+    }
+    return $params;
+}
+
 function publicUser(array $user): array {
     $tier = $user['subscription_tier'] ?? null;
     $trialEndsAt = $user['trial_ends_at'] ?? null;
@@ -570,7 +584,7 @@ if ($path === 'api/admin/guides' && $method === 'POST') {
         'title' => $title,
         'description' => trim($d['description'] ?? ''),
         'url' => trim($d['fileUrl'] ?? ''),
-        'premium' => !empty($d['premium']),
+        'premium' => !empty($d['premium']) ? 'true' : 'false',
         'sort' => (int) ($d['sortOrder'] ?? 999),
     ]);
     echo json_encode(['id' => (int) $stmt->fetchColumn()]);
@@ -603,7 +617,7 @@ if (preg_match('#^api/admin/guides/(\d+)$#', $path, $m) && in_array($method, ['P
         exit;
     }
     $stmt = $pdo->prepare('UPDATE guides SET ' . implode(', ', $sets) . ' WHERE id = :id');
-    $stmt->execute($params);
+    $stmt->execute(normalizeBoolParams($params));
     echo json_encode(['ok' => true]);
     exit;
 }
@@ -623,7 +637,7 @@ if ($path === 'api/admin/announcements' && $method === 'POST') {
     $stmt->execute([
         'title' => $title,
         'body' => trim($d['body'] ?? ''),
-        'pinned' => !empty($d['pinned']),
+        'pinned' => !empty($d['pinned']) ? 'true' : 'false',
     ]);
     echo json_encode(['id' => (int) $stmt->fetchColumn()]);
     exit;
@@ -726,7 +740,7 @@ if (preg_match('#^api/admin/users/(\d+)/progress$#', $path, $m) && $method === '
         exit;
     }
     $stmt = $pdo->prepare('UPDATE users SET ' . implode(', ', $sets) . ' WHERE id = :id');
-    $stmt->execute($params);
+    $stmt->execute(normalizeBoolParams($params));
     echo json_encode(['ok' => true]);
     exit;
 }
@@ -763,7 +777,7 @@ if (preg_match('#^api/admin/users/(\d+)$#', $path, $m) && $method === 'PUT') {
     }
     try {
         $stmt = $pdo->prepare('UPDATE users SET ' . implode(', ', $sets) . ' WHERE id = :id');
-        $stmt->execute($params);
+        $stmt->execute(normalizeBoolParams($params));
     } catch (PDOException $e) {
         http_response_code(409);
         echo json_encode(['error' => 'That email is already in use.']);
@@ -797,9 +811,9 @@ if ($path === 'api/admin/users' && $method === 'GET') {
     } elseif ($q !== '') {
         $stmt = $pdo->prepare(
             'SELECT id, name, email, subscription_tier, current_belt, stripes, next_grading_date, target_belt, role
-             FROM users WHERE name ILIKE :q OR email ILIKE :q ORDER BY name LIMIT 20'
+             FROM users WHERE name ILIKE :q_name OR email ILIKE :q_email ORDER BY name LIMIT 20'
         );
-        $stmt->execute(['q' => '%' . $q . '%']);
+        $stmt->execute(['q_name' => '%' . $q . '%', 'q_email' => '%' . $q . '%']);
     } else {
         $stmt = $pdo->query(
             'SELECT id, name, email, subscription_tier, current_belt, stripes, next_grading_date, target_belt, role
@@ -869,7 +883,7 @@ if ($path === 'api/admin/accounts' && $method === 'POST') {
         'email' => $email,
         'hash' => password_hash($password, PASSWORD_DEFAULT),
         'role' => $role,
-        'is_admin' => $role === 'admin',
+        'is_admin' => $role === 'admin' ? 'true' : 'false',
     ]);
     echo json_encode(['user' => $stmt->fetch(PDO::FETCH_ASSOC)]);
     exit;
@@ -900,7 +914,7 @@ if (preg_match('#^api/admin/users/(\d+)/role$#', $path, $m) && $method === 'PUT'
     }
 
     $stmt = $pdo->prepare('UPDATE users SET role = :role, is_admin = :is_admin WHERE id = :id');
-    $stmt->execute(['role' => $role, 'is_admin' => $role === 'admin', 'id' => $id]);
+    $stmt->execute(['role' => $role, 'is_admin' => $role === 'admin' ? 'true' : 'false', 'id' => $id]);
     echo json_encode(['ok' => true]);
     exit;
 }
@@ -930,15 +944,16 @@ if ($path === 'api/subscriptions' && $method === 'POST') {
     }
 
     $update = $pdo->prepare(
-        'UPDATE users SET subscription_tier = :tier, subscribed_at = NOW(),
-                trial_ends_at = CASE WHEN :tier = \'trial\' THEN NOW() + INTERVAL \'7 days\' ELSE trial_ends_at END,
-                trial_used = CASE WHEN :tier = \'trial\' THEN TRUE ELSE trial_used END
+        'UPDATE users SET subscription_tier = :tier,
+                subscribed_at = NOW(),
+                trial_ends_at = CASE WHEN :tier_check1 = \'trial\' THEN NOW() + INTERVAL \'7 days\' ELSE trial_ends_at END,
+                trial_used = CASE WHEN :tier_check2 = \'trial\' THEN TRUE ELSE trial_used END
          WHERE id = :id
          RETURNING id, name, email, subscription_tier, is_admin, email_verified,
                    trial_ends_at, trial_used, current_belt, stripes, next_grading_date, target_belt, created_at, role,
                    account_status, stripe_customer_id, stripe_subscription_id'
     );
-    $update->execute(['tier' => $tierSlug, 'id' => $user['id']]);
+    $update->execute(['tier' => $tierSlug, 'tier_check1' => $tierSlug, 'tier_check2' => $tierSlug, 'id' => $user['id']]);
     echo json_encode(['user' => publicUser($update->fetch(PDO::FETCH_ASSOC))]);
     exit;
 }
@@ -1118,10 +1133,10 @@ if ($path === 'api/admin/content' && $method === 'PUT') {
     }
 
     $stmt = $pdo->prepare(
-        'INSERT INTO content_blocks (key, value, updated_at) VALUES (:key, :value, NOW())
-         ON CONFLICT (key) DO UPDATE SET value = :value, updated_at = NOW()'
+        'INSERT INTO content_blocks (key, value, updated_at) VALUES (:key, :value_insert, NOW())
+         ON CONFLICT (key) DO UPDATE SET value = :value_update, updated_at = NOW()'
     );
-    $stmt->execute(['key' => $key, 'value' => $value]);
+    $stmt->execute(['key' => $key, 'value_insert' => $value, 'value_update' => $value]);
     echo json_encode(['ok' => true]);
     exit;
 }
@@ -1156,7 +1171,7 @@ if ($path === 'api/admin/videos' && $method === 'POST') {
         'url' => trim($d['videoUrl'] ?? ''),
         'duration' => trim($d['duration'] ?? '0:00'),
         'instructor' => trim($d['instructor'] ?? ''),
-        'premium' => !empty($d['premium']),
+        'premium' => !empty($d['premium']) ? 'true' : 'false',
         'sort' => (int) ($d['sortOrder'] ?? 999),
     ]);
     echo json_encode(['id' => (int) $stmt->fetchColumn()]);
@@ -1193,7 +1208,7 @@ if (preg_match('#^api/admin/videos/(\d+)$#', $path, $m) && in_array($method, ['P
         exit;
     }
     $stmt = $pdo->prepare('UPDATE videos SET ' . implode(', ', $sets) . ' WHERE id = :id');
-    $stmt->execute($params);
+    $stmt->execute(normalizeBoolParams($params));
     echo json_encode(['ok' => true]);
     exit;
 }
@@ -1254,7 +1269,7 @@ if (preg_match('#^api/admin/events/(\d+)$#', $path, $m) && in_array($method, ['P
         exit;
     }
     $stmt = $pdo->prepare('UPDATE events SET ' . implode(', ', $sets) . ' WHERE id = :id');
-    $stmt->execute($params);
+    $stmt->execute(normalizeBoolParams($params));
     echo json_encode(['ok' => true]);
     exit;
 }
@@ -1282,7 +1297,7 @@ if ($path === 'api/admin/resources' && $method === 'POST') {
         'title' => $title,
         'body' => trim($d['body'] ?? ''),
         'link' => trim($d['linkUrl'] ?? ''),
-        'premium' => !empty($d['premium']),
+        'premium' => !empty($d['premium']) ? 'true' : 'false',
         'sort' => (int) ($d['sortOrder'] ?? 999),
     ]);
     echo json_encode(['id' => (int) $stmt->fetchColumn()]);
@@ -1320,7 +1335,7 @@ if (preg_match('#^api/admin/resources/(\d+)$#', $path, $m) && in_array($method, 
         exit;
     }
     $stmt = $pdo->prepare('UPDATE resources SET ' . implode(', ', $sets) . ' WHERE id = :id');
-    $stmt->execute($params);
+    $stmt->execute(normalizeBoolParams($params));
     echo json_encode(['ok' => true]);
     exit;
 }

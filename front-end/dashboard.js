@@ -62,6 +62,8 @@ async function init() {
     return;
   }
 
+  handleCheckoutRedirect();
+
   try {
     const dash = await api("/dashboard");
     state.user = dash.user;
@@ -110,6 +112,27 @@ async function init() {
 function showSignedOutGate() {
   document.getElementById("signed-out-gate").style.display = "";
   document.getElementById("dash-root").style.display = "none";
+}
+
+function handleCheckoutRedirect() {
+  const params = new URLSearchParams(window.location.search);
+  const status = params.get("checkout");
+  if (!status) return;
+  window.history.replaceState({}, "", window.location.pathname);
+  if (status === "success") {
+    showToast("Payment received — welcome to your new membership.");
+  } else if (status === "cancelled") {
+    showToast("Checkout was cancelled. No charge was made.");
+  }
+}
+
+function showToast(message) {
+  const el = document.createElement("div");
+  el.className = "toast";
+  el.textContent = message;
+  document.body.appendChild(el);
+  setTimeout(() => el.classList.add("show"), 10);
+  setTimeout(() => { el.classList.remove("show"); setTimeout(() => el.remove(), 300); }, 5000);
 }
 
 /* ---------------- HERO / PROGRESS ---------------- */
@@ -269,7 +292,11 @@ function renderVideoGrid() {
   const emptyNote = document.getElementById("dash-empty-note");
   grid.innerHTML = "";
 
-  const filtered = state.videos.filter(
+  // Only show videos this student's tier actually grants -- a trial/no-plan
+  // student doesn't need a wall of locked premium cards cluttering their page.
+  const accessible = state.videos.filter((v) => !v.premium || state.user.subscriptionActive);
+
+  const filtered = accessible.filter(
     (v) => (state.beltFilter === "all" || v.belt === state.beltFilter) &&
            (state.typeFilter === "all" || v.type === state.typeFilter)
   );
@@ -302,6 +329,8 @@ function renderVideoGrid() {
     `;
     grid.appendChild(card);
   });
+
+  applyCollapsible(grid, 3);
 }
 
 function playIconHTML() {
@@ -309,6 +338,46 @@ function playIconHTML() {
 }
 function lockIconHTML() {
   return `<span class="lock-wrap"><span class="icon-lock"></span><span class="icon-lock-body"></span></span>`;
+}
+
+/**
+ * Shows only the first `visibleCount` children of a grid container and adds
+ * a "Show N more" toggle for the rest, so long lists (videos, guides,
+ * resource cards) don't dump everything on the page at once. Call this
+ * AFTER the container's cards have been rendered/appended.
+ */
+function applyCollapsible(container, visibleCount = 3) {
+  if (!container) return;
+  const oldToggle = document.getElementById(container.id + "-toggle");
+  if (oldToggle) oldToggle.remove();
+
+  const cards = Array.from(container.children);
+  cards.forEach((card) => card.classList.remove("collapsible-hidden"));
+  if (cards.length <= visibleCount) return;
+
+  cards.forEach((card, i) => {
+    if (i >= visibleCount) card.classList.add("collapsible-hidden");
+  });
+
+  const hiddenCount = cards.length - visibleCount;
+  const toggleWrap = document.createElement("div");
+  toggleWrap.className = "collapsible-toggle-wrap";
+  toggleWrap.id = container.id + "-toggle";
+  const btn = document.createElement("button");
+  btn.className = "btn btn-outline";
+  btn.type = "button";
+  btn.textContent = `Show ${hiddenCount} more`;
+  let expanded = false;
+  btn.addEventListener("click", () => {
+    expanded = !expanded;
+    cards.forEach((card, i) => {
+      if (i >= visibleCount) card.classList.toggle("collapsible-hidden", !expanded);
+    });
+    btn.textContent = expanded ? "Show less" : `Show ${hiddenCount} more`;
+    if (!expanded) container.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  });
+  toggleWrap.appendChild(btn);
+  container.insertAdjacentElement("afterend", toggleWrap);
 }
 
 /* --- Video modal (mirrors app.js's, plus a mark-complete toggle) --- */
@@ -442,6 +511,7 @@ function renderGuides() {
       </article>
     `;
   }).join("");
+  applyCollapsible(el, 3);
 }
 
 /* ---------------- RESOURCE SECTIONS ---------------- */
@@ -461,6 +531,7 @@ function renderResourceGroup(elementId, items, compact) {
         : `<p class="resource-card-body">${escapeHTML(r.body)}</p>`}
     </article>
   `).join("");
+  applyCollapsible(el, compact ? 6 : 3);
 }
 
 /* ---------------- NAV ---------------- */
