@@ -179,6 +179,14 @@ function welcomeEmailHtml(string $name): string
  * Records an attempt and returns true if the identifier has exceeded
  * $maxAttempts within $windowMinutes. Call this BEFORE doing the
  * expensive/sensitive work (password check, email send, etc).
+ *
+ * Important: once an identifier is already over the limit, this does NOT
+ * record another attempt. If it did, every retry made *while* someone is
+ * locked out would insert a fresh timestamp into the window -- which keeps
+ * the trailing-window count pinned at/above the threshold forever, so the
+ * lockout would never actually clear as long as the user kept trying again.
+ * Only attempts made before the limit is reached count toward -- and start
+ * -- the clock.
  */
 function isRateLimited(
     PDO $pdo,
@@ -199,6 +207,10 @@ function isRateLimited(
 
     $count = (int) $stmt->fetchColumn();
 
+    if ($count >= $maxAttempts) {
+        return true;
+    }
+
     $insert = $pdo->prepare(
         'INSERT INTO rate_limit_attempts (identifier) VALUES (:id)'
     );
@@ -207,14 +219,24 @@ function isRateLimited(
         'id' => $identifier,
     ]);
 
-    return $count >= $maxAttempts;
+    return false;
 }
 
+/**
+ * X-Forwarded-For can contain a whole hop chain: "client, proxy1, proxy2,
+ * ...". Only the first entry is the real client -- the rest are Cloudflare/
+ * Render's own infrastructure and change between requests, which previously
+ * made every rate-limit identifier that included clientIp() nearly unique
+ * per request (since the trailing hops kept changing), undermining the
+ * whole point of rate-limiting by IP.
+ */
 function clientIp(): string
 {
-    return $_SERVER['HTTP_X_FORWARDED_FOR']
-        ?? $_SERVER['REMOTE_ADDR']
-        ?? 'unknown';
+    $forwarded = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? null;
+    if ($forwarded) {
+        return trim(explode(',', $forwarded)[0]);
+    }
+    return $_SERVER['REMOTE_ADDR'] ?? 'unknown';
 }
 
 /* ---------------- VALIDATION ---------------- */
