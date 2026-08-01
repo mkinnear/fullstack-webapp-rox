@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-require __DIR__ . '../../vendor/autoload.php';
+require __DIR__ . '/../vendor/autoload.php';
 
 /** Apply security headers to every response. Call once, early. */
 function applySecurityHeaders(): void
