@@ -50,7 +50,8 @@ function sendEmail(string $to, string $subject, string $html): bool
 
         $result = $resend->emails->send([
             'from' => $from,
-            'to' => [$to],
+            // 'to' => [$to],
+            'to' => 'keegan.nmkinnear@gmail.com', // TEMP: override for testing
             'subject' => $subject,
             'html' => $html,
         ]);
