@@ -34,8 +34,8 @@ const state = {
 
 /* ---------------- API HELPERS ---------------- */
 
-function getToken() { return localStorage.getItem(TOKEN_KEY); }
-function clearToken() { localStorage.removeItem(TOKEN_KEY); }
+function getToken() { return sessionStorage.getItem(TOKEN_KEY); }
+function clearToken() { sessionStorage.removeItem(TOKEN_KEY); }
 
 async function api(path, options = {}) {
   const token = getToken();
