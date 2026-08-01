@@ -40,9 +40,13 @@ const state = {
 
 /* ---------------- API HELPERS ---------------- */
 
-function getToken() { return localStorage.getItem(TOKEN_KEY); }
-function setToken(token) { localStorage.setItem(TOKEN_KEY, token); }
-function clearToken() { localStorage.removeItem(TOKEN_KEY); }
+// sessionStorage (not localStorage): the token is cleared when the browser
+// tab/window is closed, so closing the browser actually ends the session
+// instead of silently auto-logging back in next time it's opened. The
+// tradeoff: each new tab starts signed out, even to the same site.
+function getToken() { return sessionStorage.getItem(TOKEN_KEY); }
+function setToken(token) { sessionStorage.setItem(TOKEN_KEY, token); }
+function clearToken() { sessionStorage.removeItem(TOKEN_KEY); }
 
 async function api(path, options = {}) {
   const token = getToken();
@@ -72,6 +76,7 @@ async function redirectIfAuthenticated() {
 }
 
 async function init() {
+  console.log("IKKO app build: 2026-08-01-sessionstorage-v1");
   if (await redirectIfAuthenticated()) return; // navigating away; don't render the public page at all
 
   renderBeltStrip();
@@ -486,6 +491,27 @@ function renderAuthModal() {
     return;
   }
 
+  if (mode === "login-otp") {
+    openOverlay(`
+      <form class="modal-body" id="login-otp-form">
+        <h3 class="disp" style="font-size:26px;margin:0 0 4px;">ENTER YOUR CODE</h3>
+        <p style="color:var(--muted);font-size:14px;margin-bottom:22px;">
+          We sent a 6-digit sign-in code to <strong style="color:var(--bone);">${escapeHTML(state.pendingLoginEmail || "")}</strong>.
+        </p>
+        ${field("otp", "Sign-in code", "text", "123456")}
+        ${messages}
+        <button type="submit" class="btn btn-primary btn-block" ${state.authBusy ? "disabled" : ""}>
+          ${state.authBusy ? "Verifying…" : "Sign in"}
+        </button>
+        <button type="button" class="link-btn" id="resend-login-otp" style="margin-top:14px;">Resend code</button>
+      </form>
+    `, () => {
+      document.getElementById("login-otp-form").addEventListener("submit", handleLoginOtpSubmit);
+      document.getElementById("resend-login-otp").addEventListener("click", handleResendLoginOtp);
+    });
+    return;
+  }
+
   if (mode === "verify") {
     openOverlay(`
       <form class="modal-body" id="verify-form">
@@ -568,24 +594,62 @@ async function handleAuthSubmit(e) {
       body: JSON.stringify(payload),
     });
 
-    setToken(data.token);
-    state.currentUser = data.user;
-    updateNavAuthState();
-    renderTierGrid();
-    renderVideoGrid();
-
     if (isSignup) {
+      setToken(data.token);
+      state.currentUser = data.user;
+      updateNavAuthState();
+      renderTierGrid();
+      renderVideoGrid();
       state.authBusy = false;
       openAuthModal("verify");
       return;
     }
 
+    // Login is now two-step: password, then an emailed code -- data.token
+    // isn't issued until that code is confirmed in handleLoginOtpSubmit.
+    state.authBusy = false;
+    state.pendingLoginEmail = data.email;
+    openAuthModal("login-otp");
+  } catch (err) {
+    state.authBusy = false;
+    state.authError = err.message;
+    renderAuthModal();
+  }
+}
+
+async function handleLoginOtpSubmit(e) {
+  e.preventDefault();
+  const code = document.getElementById("field-otp").value.trim();
+  state.authBusy = true;
+  state.authError = "";
+  renderAuthModal();
+  try {
+    const data = await api("/auth/login-verify", {
+      method: "POST",
+      body: JSON.stringify({ email: state.pendingLoginEmail, code }),
+    });
+    setToken(data.token);
+    state.currentUser = data.user;
+    updateNavAuthState();
+    renderTierGrid();
+    renderVideoGrid();
     await resumePendingTierOrClose();
   } catch (err) {
     state.authBusy = false;
     state.authError = err.message;
     renderAuthModal();
   }
+}
+
+async function handleResendLoginOtp() {
+  state.authError = "";
+  try {
+    await api("/auth/login-resend-otp", { method: "POST", body: JSON.stringify({ email: state.pendingLoginEmail }) });
+    state.authNotice = "A new code is on its way.";
+  } catch (err) {
+    state.authError = err.message;
+  }
+  renderAuthModal();
 }
 
 async function handleVerifySubmit(e) {

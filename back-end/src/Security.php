@@ -81,20 +81,20 @@ function welcomeEmailHtml(string $name): string {
         <div style='font-family:sans-serif;max-width:520px;margin:0 auto;line-height:1.6;color:#222;'>
             <h2 style='margin-bottom:0;'>IKKO Academy</h2>
             <p style='color:#666;margin-top:4px;'>Official Digital Learning Platform</p>
-            <p>Dear $safeName,</p>
-            <p>We are excited to welcome you to <strong>IKKO Academy</strong> &mdash; the official digital learning platform designed to complement your dojo training and preserve the teachings of IKKO Karate for future generations.</p>
-            <p>IKKO Academy gives you the opportunity to continue your learning beyond the dojo through structured educational resources aligned with the IKKO curriculum.</p>
-            <p>As the Academy develops, you can look forward to:</p>
-            <ul style='padding-left:20px;'>
-                <li>Live online training sessions</li>
-                <li>Access to lesson recordings</li>
-                <li>Official IKKO Academy Training Guides</li>
-                <li>Educational resources and study materials</li>
-                <li>Curriculum-based learning to support grading preparation</li>
+            <p>Dear IKKO $safeName,</p>
+            <p>We are excited to welcome you to <strong>IKKO Academy</strong> &ndash; the official digital learning platform designed to complement your dojo training and preserve the teachings of IKKO Karate for future generations.</p>
+            <p>IKKO Academy has been created to provide students with the opportunity to continue their learning beyond the dojo through structured educational resources aligned with the IKKO curriculum.</p>
+            <p>As the Academy develops, members can look forward to:</p>
+            <ul style='padding-left:20px;list-style:none;'>
+                <li>&#129355; Live online training sessions</li>
+                <li>&#127909; Access to lesson recordings</li>
+                <li>&#128214; Official IKKO Academy Training Guides</li>
+                <li>&#128218; Educational resources and study materials</li>
+                <li>&#127919; Curriculum-based learning to support grading preparation</li>
             </ul>
-            <p>Our vision is not to replace traditional dojo training, but to extend the learning experience &mdash; allowing you to revise lessons, deepen your understanding, and continue developing your knowledge, discipline and spirit wherever you are.</p>
+            <p>Our vision is not to replace traditional dojo training, but to extend the learning experience, allowing students to revise lessons, deepen their understanding and continue developing their knowledge, discipline and spirit wherever they are.</p>
             <p style='font-weight:bold;letter-spacing:1px;'>Train &bull; Learn &bull; Grow</p>
-            <p>If you'd like to find out more about becoming an IKKO Academy member or have any questions, please feel free to get in touch.</p>
+            <p>If you would like to find out more about becoming an IKKO Academy member or have any questions, please feel free to contact me directly.</p>
             <p style='margin-bottom:0;'>Roxanne Cassim</p>
             <p style='margin-top:0;color:#666;'>IKKO Academy</p>
         </div>

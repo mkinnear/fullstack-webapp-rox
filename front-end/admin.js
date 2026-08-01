@@ -4,9 +4,9 @@ const API_BASE = window.location.hostname === "localhost"
 
 const TOKEN_KEY = "kk_token";
 
-function getToken() { return localStorage.getItem(TOKEN_KEY); }
-function setToken(t) { localStorage.setItem(TOKEN_KEY, t); }
-function clearToken() { localStorage.removeItem(TOKEN_KEY); }
+function getToken() { return sessionStorage.getItem(TOKEN_KEY); }
+function setToken(t) { sessionStorage.setItem(TOKEN_KEY, t); }
+function clearToken() { sessionStorage.removeItem(TOKEN_KEY); }
 
 async function api(path, options = {}) {
   const token = getToken();
@@ -22,6 +22,7 @@ const BELTS = ["white", "yellow", "orange", "green", "blue", "purple", "brown", 
 let currentAdmin = null;
 
 async function init() {
+  console.log("IKKO Admin build: 2026-08-01-sectioned-accordion-v1");
   document.getElementById("admin-login-form").addEventListener("submit", handleLogin);
   document.getElementById("admin-logout").addEventListener("click", handleLogout);
   document.getElementById("add-video-form").addEventListener("submit", handleAddVideo);
@@ -123,12 +124,31 @@ function wireLazyAccordions() {
   });
 }
 
+let pendingAdminEmail = null;
+
 async function handleLogin(e) {
   e.preventDefault();
   const email = document.getElementById("admin-email").value.trim();
   const password = document.getElementById("admin-password").value;
   try {
     const data = await api("/auth/login", { method: "POST", body: JSON.stringify({ email, password }) });
+    pendingAdminEmail = data.email;
+    document.getElementById("admin-otp-email").textContent = data.email;
+    document.getElementById("admin-login-gate").classList.add("hidden");
+    document.getElementById("admin-otp-gate").classList.remove("hidden");
+    document.getElementById("admin-otp-code").focus();
+  } catch (err) {
+    showLoginGate(err.message);
+  }
+}
+
+async function handleOtpSubmit(e) {
+  e.preventDefault();
+  const code = document.getElementById("admin-otp-code").value.trim();
+  const errEl = document.getElementById("admin-otp-error");
+  errEl.classList.add("hidden");
+  try {
+    const data = await api("/auth/login-verify", { method: "POST", body: JSON.stringify({ email: pendingAdminEmail, code }) });
     if (!data.user.isAdmin) {
       showLoginGate("That account doesn't have admin access.");
       return;
@@ -137,7 +157,22 @@ async function handleLogin(e) {
     setToken(data.token);
     showDashboard();
   } catch (err) {
-    showLoginGate(err.message);
+    errEl.textContent = err.message;
+    errEl.classList.remove("hidden");
+  }
+}
+
+async function handleResendAdminOtp() {
+  const errEl = document.getElementById("admin-otp-error");
+  try {
+    await api("/auth/login-resend-otp", { method: "POST", body: JSON.stringify({ email: pendingAdminEmail }) });
+    errEl.style.color = "var(--green-belt)";
+    errEl.textContent = "A new code is on its way.";
+    errEl.classList.remove("hidden");
+  } catch (err) {
+    errEl.style.color = "var(--red)";
+    errEl.textContent = err.message;
+    errEl.classList.remove("hidden");
   }
 }
 

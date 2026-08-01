@@ -194,9 +194,70 @@ if ($path === 'api/auth/login' && $method === 'POST') {
     $reset = $pdo->prepare('UPDATE users SET failed_login_attempts = 0, locked_until = NULL WHERE id = :id');
     $reset->execute(['id' => $user['id']]);
 
+    if (isRateLimited($pdo, 'login-otp:' . $user['id'], 5, 15)) {
+        http_response_code(429);
+        echo json_encode(['error' => 'Too many verification codes requested. Please wait a few minutes.']);
+        exit;
+    }
+
+    $code = issueOtp($pdo, (int) $user['id'], 'login');
+    sendEmail($user['email'], 'Your IKKO Academy sign-in code', otpEmailHtml($user['name'], $code, 'sign-in verification'));
+
+    echo json_encode(['otpRequired' => true, 'email' => $user['email']]);
+    exit;
+}
+
+if ($path === 'api/auth/login-verify' && $method === 'POST') {
+    $data = body();
+    $email = strtolower(trim($data['email'] ?? ''));
+    $code = trim((string) ($data['code'] ?? ''));
+
+    if (isRateLimited($pdo, 'login-verify:' . $email . ':' . clientIp(), 8, 15)) {
+        http_response_code(429);
+        echo json_encode(['error' => 'Too many attempts. Please wait a few minutes and try again.']);
+        exit;
+    }
+
+    $stmt = $pdo->prepare(
+        'SELECT id, name, email, subscription_tier, is_admin, email_verified,
+                trial_ends_at, trial_used, current_belt, stripes, next_grading_date, target_belt, created_at, role,
+                account_status, stripe_customer_id, stripe_subscription_id
+         FROM users WHERE email = :email'
+    );
+    $stmt->execute(['email' => $email]);
+    $user = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    if (!$user || !consumeOtp($pdo, (int) $user['id'], 'login', $code)) {
+        http_response_code(400);
+        echo json_encode(['error' => 'That code is invalid or has expired.']);
+        exit;
+    }
+
     $isStaff = in_array($user['role'] ?? 'user', ['admin', 'super_admin'], true);
     $token = createSession($pdo, (int) $user['id'], $isStaff ? ADMIN_SESSION_LIFETIME_HOURS : null);
     echo json_encode(['token' => $token, 'user' => publicUser($user)]);
+    exit;
+}
+
+if ($path === 'api/auth/login-resend-otp' && $method === 'POST') {
+    $email = strtolower(trim(body()['email'] ?? ''));
+
+    if (isRateLimited($pdo, 'login-resend:' . $email . ':' . clientIp(), 5, 15)) {
+        http_response_code(429);
+        echo json_encode(['error' => 'Too many requests. Please wait a few minutes.']);
+        exit;
+    }
+
+    $stmt = $pdo->prepare('SELECT id, name, email FROM users WHERE email = :email');
+    $stmt->execute(['email' => $email]);
+    $user = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    // Same response either way -- this isn't a way to discover which emails are registered.
+    if ($user) {
+        $code = issueOtp($pdo, (int) $user['id'], 'login');
+        sendEmail($user['email'], 'Your IKKO Academy sign-in code', otpEmailHtml($user['name'], $code, 'sign-in verification'));
+    }
+    echo json_encode(['ok' => true]);
     exit;
 }
 
@@ -368,6 +429,14 @@ if ($path === 'api/tiers' && $method === 'GET') {
         ];
     }, $tiers);
     echo json_encode($result);
+    exit;
+}
+
+// Bump this string every time you deploy. Check it at /api/version to know,
+// with certainty, exactly which code is actually running on Render right
+// now -- settles "did my fix actually deploy?" in one request instead of guessing.
+if ($path === 'api/version' && $method === 'GET') {
+    echo json_encode(['version' => '2026-08-01-content-fix-2', 'deployedAt' => date('c')]);
     exit;
 }
 
