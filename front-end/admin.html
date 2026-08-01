@@ -45,6 +45,23 @@
     </form>
   </section>
 
+  <!-- OTP GATE (shown after a correct password, before a session is issued) -->
+  <section id="admin-otp-gate" class="admin-panel hidden">
+    <h2 class="disp" style="font-size:28px;margin:0 0 6px;">ENTER YOUR CODE</h2>
+    <p style="color:var(--muted);font-size:14px;margin-bottom:22px;">
+      We sent a sign-in code to <strong id="admin-otp-email"></strong>. It expires in 10 minutes.
+    </p>
+    <form id="admin-otp-form" class="admin-form-narrow">
+      <label class="field">
+        <span class="field-label">Sign-in code</span>
+        <input class="field-input" id="admin-otp-code" type="text" inputmode="numeric" autocomplete="one-time-code" placeholder="123456" required />
+      </label>
+      <p class="field-error hidden" id="admin-otp-error"></p>
+      <button type="submit" class="btn btn-primary btn-block">Verify &amp; sign in</button>
+      <button type="button" class="link-btn" id="admin-otp-resend" style="margin-top:14px;">Resend code</button>
+    </form>
+  </section>
+
   <!-- ADMIN DASHBOARD (hidden until authenticated as admin) -->
   <div id="admin-dashboard" class="hidden">
 

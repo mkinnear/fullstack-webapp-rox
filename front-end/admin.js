@@ -24,6 +24,8 @@ let currentAdmin = null;
 async function init() {
   console.log("IKKO Admin build: 2026-08-01-sectioned-accordion-v1");
   document.getElementById("admin-login-form").addEventListener("submit", handleLogin);
+  document.getElementById("admin-otp-form").addEventListener("submit", handleOtpSubmit);
+  document.getElementById("admin-otp-resend").addEventListener("click", handleResendAdminOtp);
   document.getElementById("admin-logout").addEventListener("click", handleLogout);
   document.getElementById("add-video-form").addEventListener("submit", handleAddVideo);
   document.getElementById("add-event-form").addEventListener("submit", handleAddEvent);
@@ -56,6 +58,7 @@ async function init() {
 
 function showLoginGate(error) {
   document.getElementById("admin-login-gate").classList.remove("hidden");
+  document.getElementById("admin-otp-gate").classList.add("hidden");
   document.getElementById("admin-dashboard").classList.add("hidden");
   document.getElementById("admin-logout").classList.add("hidden");
   const errEl = document.getElementById("admin-login-error");
@@ -65,6 +68,7 @@ function showLoginGate(error) {
 
 function showDashboard() {
   document.getElementById("admin-login-gate").classList.add("hidden");
+  document.getElementById("admin-otp-gate").classList.add("hidden");
   document.getElementById("admin-dashboard").classList.remove("hidden");
   document.getElementById("admin-logout").classList.remove("hidden");
   document.getElementById("area-card-accounts").classList.toggle("hidden", !currentAdmin.isSuperAdmin);
@@ -157,6 +161,7 @@ async function handleOtpSubmit(e) {
     setToken(data.token);
     showDashboard();
   } catch (err) {
+    errEl.style.color = "var(--red)";
     errEl.textContent = err.message;
     errEl.classList.remove("hidden");
   }
