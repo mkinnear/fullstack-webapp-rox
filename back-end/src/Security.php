@@ -51,8 +51,6 @@ function sendEmail(string $to, string $subject, string $html): bool
         $result = $resend->emails->send([
             'from' => $from,
             'to' => [$to],
-            // 'to' => 'keegan.nmkinnear@gmail.com', // TEMP: override for testing
-            'reply_to' => 'noreply@geekan.com',
             'subject' => $subject,
             'html' => $html,
         ]);
@@ -165,7 +163,7 @@ function welcomeEmailHtml(string $name): string
             <p>
                 If you would like to find out more about becoming an IKKO
                 Academy member or have any questions, please feel free to
-                contact me directly at Ikkohonbu7@gmail.com.
+                contact me directly.
             </p>
 
             <p style='margin-bottom:0;'>Roxanne Cassim</p>

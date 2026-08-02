@@ -81,6 +81,7 @@ async function init() {
   wireNav();
   wireQuickNav();
   renderHero();
+  renderSubscriptionBanner();
 
   const [videos, completed, guides, announcements, live, resources] = await Promise.all([
     api("/videos").catch(() => []),
@@ -577,6 +578,50 @@ function wireQuickNav() {
 /* ---------------- ACCOUNT ---------------- */
 
 const TIER_NAMES = { trial: "Free Trial", standard: "Academy Member", advanced: "Advanced Member" };
+
+function renderSubscriptionBanner() {
+  const user = state.user;
+  const banner = document.getElementById("subscription-banner");
+  const isPaid = user.subscriptionTier === "standard" || user.subscriptionTier === "advanced";
+
+  let html = null;
+  let notice = false; // notice = gold/informational, otherwise red/urgent
+
+  if (isPaid && user.accountStatus === "payment_failed") {
+    html = `<span>Your last payment didn't go through. Update your payment method to keep your dashboard access.</span>
+            <button class="btn btn-light" id="banner-fix-payment">Update payment method</button>`;
+  } else if (isPaid && user.accountStatus === "cancelled") {
+    html = `<span>Your subscription has ended, so full-library access is paused.</span>
+            <a class="btn btn-light" href="index.html#membership">Choose a membership</a>`;
+  } else if (isPaid && user.accountStatus === "paused") {
+    notice = true;
+    html = `<span>Your membership is on hold. Resume it any time to get your full access back.</span>
+            <button class="btn btn-outline" id="banner-jump-account">Resume in Account</button>`;
+  } else if (user.subscriptionTier === "trial" && user.trialEndsAt && new Date(user.trialEndsAt) <= new Date()) {
+    html = `<span>Your free trial has ended. Choose a membership to keep training with the full library.</span>
+            <a class="btn btn-light" href="index.html#membership">Choose a membership</a>`;
+  } else if (!user.subscriptionTier) {
+    notice = true;
+    html = `<span>You haven't chosen a membership yet — pick one to unlock lessons and guides beyond your free preview.</span>
+            <a class="btn btn-outline" href="index.html#membership">Choose a membership</a>`;
+  }
+
+  if (!html) {
+    banner.classList.add("hidden");
+    banner.innerHTML = "";
+    return;
+  }
+
+  banner.classList.remove("hidden");
+  banner.classList.toggle("is-notice", notice);
+  banner.innerHTML = html;
+
+  const fixBtn = document.getElementById("banner-fix-payment");
+  if (fixBtn) fixBtn.addEventListener("click", handleManageBilling);
+
+  const jumpBtn = document.getElementById("banner-jump-account");
+  if (jumpBtn) jumpBtn.addEventListener("click", () => document.getElementById("account").scrollIntoView({ behavior: "smooth" }));
+}
 
 function renderAccountSection() {
   const user = state.user;
