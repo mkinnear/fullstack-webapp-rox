@@ -1,22 +1,29 @@
 <?php
 
-const SESSION_LIFETIME_DAYS = 30;      // regular members
-const ADMIN_SESSION_LIFETIME_HOURS = 12; // admin/super_admin -- higher privilege, shorter leash
+const SESSION_LIFETIME_DAYS = 30;
+const ADMIN_SESSION_LIFETIME_HOURS = 12; // staff sessions expire sooner than regular member sessions
 const OTP_LIFETIME_MINUTES = 10;
 
 /* ---------------- SESSIONS (hashed tokens) ---------------- */
 
-function createSession(PDO $pdo, int $userId, ?int $lifetimeHours = null): string {
-    $hours = $lifetimeHours ?? (SESSION_LIFETIME_DAYS * 24);
+/**
+ * Creates a session and returns the raw token (only its hash is stored).
+ * Pass $hours to override the default 30-day member lifetime -- used for
+ * staff (admin/super_admin) logins, which should expire sooner.
+ */
+function createSession(PDO $pdo, int $userId, ?int $hours = null): string {
     $token = bin2hex(random_bytes(32));
+    $intervalExpr = $hours !== null
+        ? "NOW() + (:amount || ' hours')::interval"
+        : "NOW() + (:amount || ' days')::interval";
     $stmt = $pdo->prepare(
         "INSERT INTO sessions (token_hash, user_id, expires_at)
-         VALUES (:hash, :user_id, NOW() + (:hours || ' hours')::interval)"
+         VALUES (:hash, :user_id, $intervalExpr)"
     );
     $stmt->execute([
         'hash' => hash('sha256', $token),
         'user_id' => $userId,
-        'hours' => $hours,
+        'amount' => $hours ?? SESSION_LIFETIME_DAYS,
     ]);
     return $token; // raw token goes to the client; only the hash is stored
 }
@@ -49,8 +56,7 @@ function getUserFromToken(PDO $pdo, ?string $token): ?array {
     $stmt = $pdo->prepare(
         "SELECT u.id, u.name, u.email, u.subscription_tier, u.is_admin, u.email_verified,
                 u.trial_ends_at, u.trial_used, u.current_belt, u.stripes, u.next_grading_date,
-                u.target_belt, u.created_at, u.role,
-                u.account_status, u.stripe_customer_id, u.stripe_subscription_id
+                u.target_belt, u.created_at, u.role, u.account_status
          FROM sessions s
          JOIN users u ON u.id = s.user_id
          WHERE s.token_hash = :hash AND s.expires_at > NOW()"

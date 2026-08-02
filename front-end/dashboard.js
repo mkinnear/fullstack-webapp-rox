@@ -284,7 +284,7 @@ function setBeltFilter(id) { state.beltFilter = id; renderBeltFilters(); renderV
 function setTypeFilter(t) { state.typeFilter = t; renderTypeFilters(); renderVideoGrid(); }
 
 function isLocked(video) {
-  return video.premium && !state.user.subscriptionActive;
+  return !video.unlocked;
 }
 
 function renderVideoGrid() {
@@ -292,9 +292,11 @@ function renderVideoGrid() {
   const emptyNote = document.getElementById("dash-empty-note");
   grid.innerHTML = "";
 
-  // Only show videos this student's tier actually grants -- a trial/no-plan
-  // student doesn't need a wall of locked premium cards cluttering their page.
-  const accessible = state.videos.filter((v) => !v.premium || state.user.subscriptionActive);
+  // Only show videos this student can actually open -- server-side "unlocked"
+  // already accounts for both subscription status and belt rank, so a
+  // trial/no-plan student or a student below the required rank doesn't get
+  // a wall of locked cards cluttering their page.
+  const accessible = state.videos.filter((v) => v.unlocked);
 
   const filtered = accessible.filter(
     (v) => (state.beltFilter === "all" || v.belt === state.beltFilter) &&

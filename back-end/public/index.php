@@ -44,6 +44,26 @@ function body(): array {
 
 const BELT_ORDER = ['white', 'yellow', 'orange', 'green', 'blue', 'purple', 'brown', 'black'];
 
+/**
+ * True if a student holding $studentBelt is allowed to access material
+ * tagged $itemBelt -- cumulative, so a blue belt can reach white/yellow/
+ * orange/green/blue but not purple/brown/black. An item tagged 'all'
+ * (guides/live sessions not specific to one rank) is always allowed. An
+ * unrecognized student belt fails closed (denies access) rather than
+ * defaulting open.
+ */
+function beltRankAllows(?string $studentBelt, string $itemBelt): bool {
+    if ($itemBelt === 'all') {
+        return true;
+    }
+    $studentIndex = array_search($studentBelt, BELT_ORDER, true);
+    $itemIndex = array_search($itemBelt, BELT_ORDER, true);
+    if ($studentIndex === false || $itemIndex === false) {
+        return false;
+    }
+    return $itemIndex <= $studentIndex;
+}
+
 function toBool($v): bool {
     return $v === true || $v === 't';
 }
@@ -62,14 +82,26 @@ function normalizeBoolParams(array $params): array {
     return $params;
 }
 
+/**
+ * Single source of truth for "does this user currently have paid/trial
+ * access" -- used by publicUser() for display and by every content-gating
+ * check, so the two can never disagree about who's actually subscribed.
+ */
+function subscriptionActive(array $user): bool {
+    $tier = $user['subscription_tier'] ?? null;
+    $trialEndsAt = $user['trial_ends_at'] ?? null;
+    $accountStatus = $user['account_status'] ?? 'active';
+    return $tier !== null
+        && ($tier === 'trial'
+            ? ($trialEndsAt !== null && strtotime($trialEndsAt) > time())
+            : $accountStatus === 'active');
+}
+
 function publicUser(array $user): array {
     $tier = $user['subscription_tier'] ?? null;
     $trialEndsAt = $user['trial_ends_at'] ?? null;
     $accountStatus = $user['account_status'] ?? 'active';
-    $subscriptionActive = $tier !== null
-        && ($tier === 'trial'
-            ? ($trialEndsAt !== null && strtotime($trialEndsAt) > time())
-            : $accountStatus === 'active');
+    $subscriptionActive = subscriptionActive($user);
     $role = $user['role'] ?? ($user['is_admin'] === true || $user['is_admin'] === 't' ? 'admin' : 'user');
 
     return [
@@ -384,11 +416,18 @@ if ($path === 'api/auth/reset-password' && $method === 'POST') {
    ============================================================ */
 
 if ($path === 'api/videos' && $method === 'GET') {
+    $viewer = getUserFromToken($pdo, bearerToken()); // null if not signed in -- that's fine, treated as no access to premium/ranked content
+
     $stmt = $pdo->query(
         'SELECT id, belt_slug, lesson_number, type, title, caption, video_url, duration, instructor, premium
          FROM videos ORDER BY sort_order'
     );
-    $videos = array_map(function ($row) {
+    $videos = array_map(function ($row) use ($viewer) {
+        $isPremium = toBool($row['premium']);
+        $subscriptionOk = !$isPremium || ($viewer && subscriptionActive($viewer));
+        $rankOk = beltRankAllows($viewer['current_belt'] ?? null, $row['belt_slug']);
+        $unlocked = $subscriptionOk && $rankOk;
+
         return [
             'id' => (int) $row['id'],
             'belt' => $row['belt_slug'],
@@ -396,10 +435,16 @@ if ($path === 'api/videos' && $method === 'GET') {
             'type' => $row['type'],
             'title' => $row['title'],
             'caption' => $row['caption'],
-            'videoUrl' => $row['video_url'],
+            // The playable URL is only ever included once the viewer has actually
+            // earned access -- premium/rank locking used to be visual-only (the
+            // URL was always in the response), which meant it wasn't real access
+            // control. It is now.
+            'videoUrl' => $unlocked ? $row['video_url'] : null,
             'duration' => $row['duration'],
             'instructor' => $row['instructor'],
-            'premium' => toBool($row['premium']),
+            'premium' => $isPremium,
+            'unlocked' => $unlocked,
+            'lockReason' => $unlocked ? null : (!$subscriptionOk ? 'subscription' : 'rank'),
         ];
     }, $stmt->fetchAll(PDO::FETCH_ASSOC));
     echo json_encode($videos);
@@ -522,19 +567,23 @@ if ($path === 'api/dashboard' && $method === 'GET') {
 
 if ($path === 'api/guides' && $method === 'GET') {
     $user = getUserFromToken($pdo, bearerToken());
-    $active = $user ? publicUser($user)['subscriptionActive'] : false;
+    $active = $user ? subscriptionActive($user) : false;
 
     $stmt = $pdo->query('SELECT id, belt_slug, title, description, file_url, premium FROM guides ORDER BY sort_order');
-    $guides = array_map(function ($row) use ($active) {
+    $guides = array_map(function ($row) use ($active, $user) {
         $premium = toBool($row['premium']);
+        $subscriptionOk = !$premium || $active;
+        $rankOk = beltRankAllows($user['current_belt'] ?? null, $row['belt_slug']);
+        $unlocked = $subscriptionOk && $rankOk;
         return [
             'id' => (int) $row['id'],
             'belt' => $row['belt_slug'],
             'title' => $row['title'],
             'description' => $row['description'],
             'premium' => $premium,
-            'locked' => $premium && !$active,
-            'fileUrl' => (!$premium || $active) ? $row['file_url'] : null,
+            'locked' => !$unlocked,
+            'lockReason' => $unlocked ? null : (!$subscriptionOk ? 'subscription' : 'rank'),
+            'fileUrl' => $unlocked ? $row['file_url'] : null,
         ];
     }, $stmt->fetchAll(PDO::FETCH_ASSOC));
     echo json_encode($guides);
@@ -611,6 +660,16 @@ if (preg_match('#^api/progress/videos/(\d+)$#', $path, $m) && in_array($method, 
     $videoId = (int) $m[1];
 
     if ($method === 'POST') {
+        $videoStmt = $pdo->prepare('SELECT belt_slug, premium FROM videos WHERE id = :id');
+        $videoStmt->execute(['id' => $videoId]);
+        $video = $videoStmt->fetch(PDO::FETCH_ASSOC);
+        $subscriptionOk = !$video || !toBool($video['premium']) || subscriptionActive($user);
+        $rankOk = $video && beltRankAllows($user['current_belt'] ?? null, $video['belt_slug']);
+        if (!$video || !$subscriptionOk || !$rankOk) {
+            http_response_code(403);
+            echo json_encode(['error' => 'You do not have access to this lesson yet.']);
+            exit;
+        }
         $stmt = $pdo->prepare(
             'INSERT INTO lesson_progress (user_id, video_id) VALUES (:uid, :vid)
              ON CONFLICT (user_id, video_id) DO NOTHING'
@@ -1096,6 +1155,33 @@ if ($path === 'api/webhooks/stripe' && $method === 'POST') {
                  ON CONFLICT (stripe_session_id) DO NOTHING'
             );
             $record->execute(['uid' => $userId, 'tier' => $tierSlug, 'sid' => $session['id'], 'amount' => $priceCents]);
+        }
+    }
+
+    // A renewal payment failed -- don't touch subscription_tier (Stripe will
+    // retry per its own settings), just flag the account so the dashboard
+    // can nudge the student to update their payment method.
+    if (($event['type'] ?? '') === 'invoice.payment_failed') {
+        $customerId = $event['data']['object']['customer'] ?? null;
+        if ($customerId) {
+            $update = $pdo->prepare(
+                "UPDATE users SET account_status = 'payment_failed'
+                 WHERE stripe_customer_id = :cust AND account_status = 'active'"
+            );
+            $update->execute(['cust' => $customerId]);
+        }
+    }
+
+    // The subscription itself was cancelled (voluntarily or after repeated
+    // failed retries) -- access should stop, but the account and all its
+    // history (progress, belt, everything) stays intact.
+    if (($event['type'] ?? '') === 'customer.subscription.deleted') {
+        $customerId = $event['data']['object']['customer'] ?? null;
+        if ($customerId) {
+            $update = $pdo->prepare(
+                "UPDATE users SET account_status = 'cancelled' WHERE stripe_customer_id = :cust"
+            );
+            $update->execute(['cust' => $customerId]);
         }
     }
 

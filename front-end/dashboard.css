@@ -1,5 +1,15 @@
 /* Uses the color/type tokens defined in style.css (--ink, --gold, belt colors, etc). */
 
+/* ---------------- SUBSCRIPTION STATUS BANNER ---------------- */
+.subscription-banner {
+  display: flex; align-items: center; justify-content: center; gap: 16px;
+  flex-wrap: wrap; text-align: center;
+  padding: 14px 24px; background: var(--red); color: var(--bone);
+  font-size: 14px; font-weight: 600;
+}
+.subscription-banner.is-notice { background: var(--gold); color: #2A2113; }
+.subscription-banner .btn { flex-shrink: 0; }
+
 /* ---------------- HERO / PROFILE HEADER ---------------- */
 .dash-hero {
   position: relative;

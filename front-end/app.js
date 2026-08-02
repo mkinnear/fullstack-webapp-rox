@@ -1,4 +1,4 @@
-/* ---------------- CONFIG ---------------- */
+/* ---------------- CONFIG (mirrors app.js) ---------------- */
 
 const API_BASE = window.location.hostname === "localhost"
   ? "http://localhost:8000/api"
@@ -6,8 +6,6 @@ const API_BASE = window.location.hostname === "localhost"
 
 const TOKEN_KEY = "kk_token";
 
-// Belt colors/names are presentation-only, so they stay on the frontend.
-// The backend only ever refers to a belt by its slug.
 const BELTS = [
   { id: "white", name: "White", hex: "#F2EFE7", text: "#1A1A1A", outline: true },
   { id: "yellow", name: "Yellow", hex: "#E8C339", text: "#1A1A1A" },
@@ -22,30 +20,21 @@ const TYPES = ["Kihon", "Kata", "Kumite", "Bunkai", "Conditioning"];
 
 function beltById(id) { return BELTS.find((b) => b.id === id) || BELTS[0]; }
 
-/* ---------------- STATE ---------------- */
-
 const state = {
+  user: null,
+  progress: null,
+  beltOrder: [],
   videos: [],
-  tiers: [],
-  currentUser: null,
-  beltFilter: "all",
+  completedVideoIds: new Set(),
+  guides: [],
+  resources: {},
+  beltFilter: null, // set once we know the user's belt
   typeFilter: "all",
-  authMode: null,        // null | "signin" | "signup" | "verify" | "forgot" | "reset"
-  authError: "",
-  authNotice: "",
-  authBusy: false,
-  pendingTier: null,      // tier the user tried to buy before being signed in
-  resetEmail: "",         // carried from "forgot" step into "reset" step
 };
 
 /* ---------------- API HELPERS ---------------- */
 
-// sessionStorage (not localStorage): the token is cleared when the browser
-// tab/window is closed, so closing the browser actually ends the session
-// instead of silently auto-logging back in next time it's opened. The
-// tradeoff: each new tab starts signed out, even to the same site.
 function getToken() { return sessionStorage.getItem(TOKEN_KEY); }
-function setToken(token) { sessionStorage.setItem(TOKEN_KEY, token); }
 function clearToken() { sessionStorage.removeItem(TOKEN_KEY); }
 
 async function api(path, options = {}) {
@@ -55,75 +44,75 @@ async function api(path, options = {}) {
 
   const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    throw new Error(data.error || "Something went wrong. Please try again.");
-  }
+  if (!res.ok) throw new Error(data.error || "Something went wrong. Please try again.");
   return data;
 }
 
-/* ---------------- INIT / DATA LOAD ---------------- */
-
-async function redirectIfAuthenticated() {
-  if (!getToken()) return false;
-  try {
-    await api("/auth/me"); // confirms the token is still valid, not just present
-    window.location.replace("dashboard.html");
-    return true;
-  } catch {
-    clearToken(); // stale/expired token -- let them see the public page normally
-    return false;
-  }
+function escapeHTML(str) {
+  const div = document.createElement("div");
+  div.textContent = str == null ? "" : String(str);
+  return div.innerHTML;
 }
 
+/* ---------------- INIT ---------------- */
+
 async function init() {
-  console.log("IKKO app build: 2026-08-01-sessionstorage-v1");
-  if (await redirectIfAuthenticated()) return; // navigating away; don't render the public page at all
-
-  renderBeltStrip();
-  wireNav();
-  handleCheckoutRedirect();
-
-  const grid = document.getElementById("video-grid");
-  grid.innerHTML = `<p class="loading-note">Loading the library…</p>`;
-
-  try {
-    const [videos, tiers, content] = await Promise.all([
-      api("/videos"),
-      api("/tiers"),
-      api("/content").catch(() => ({})), // CMS text is optional -- fall back to the HTML defaults
-    ]);
-    state.videos = videos;
-    state.tiers = tiers;
-    applyContent(content);
-  } catch (err) {
-    grid.innerHTML = `<p class="loading-note">Couldn't reach the server. Is the backend running?</p>`;
-    console.error(err);
+  if (!getToken()) {
+    showSignedOutGate();
     return;
   }
 
-  api("/events").then(renderEventsCarousel).catch((err) => console.error("events failed to load", err));
+  handleCheckoutRedirect();
 
-  renderVideoGrid();
-  renderTierGrid();
-
-  if (getToken()) {
-    try {
-      const { user } = await api("/auth/me");
-      state.currentUser = user;
-    } catch {
-      clearToken(); // expired/invalid token
-    }
+  try {
+    const dash = await api("/dashboard");
+    state.user = dash.user;
+    state.progress = dash.progress;
+    state.beltOrder = dash.beltOrder;
+    state.beltFilter = dash.progress.currentBelt;
+  } catch (err) {
+    console.error(err);
+    clearToken();
+    showSignedOutGate();
+    return;
   }
-  updateNavAuthState();
-  renderTierGrid();
+
+  document.getElementById("dash-root").style.display = "";
+  wireNav();
+  wireQuickNav();
+  renderHero();
+  renderSubscriptionBanner();
+
+  const [videos, completed, guides, announcements, live, resources] = await Promise.all([
+    api("/videos").catch(() => []),
+    api("/progress/videos").catch(() => []),
+    api("/guides").catch(() => []),
+    api("/announcements").catch(() => []),
+    api("/live-sessions").catch(() => []),
+    api("/resources").catch(() => ({})),
+  ]);
+
+  state.videos = videos;
+  state.completedVideoIds = new Set(completed);
+  state.guides = guides;
+  state.resources = resources;
+
+  renderAnnouncements(announcements);
+  renderLiveSessions(live);
+  renderBeltFilters();
+  renderTypeFilters();
   renderVideoGrid();
+  renderGuides();
+  renderResourceGroup("grading-grid", resources.grading || []);
+  renderResourceGroup("terminology-grid", resources.terminology || [], true);
+  renderResourceGroup("philosophy-grid", resources.philosophy || []);
+  renderResourceGroup("instructor-grid", resources.instructor || []);
+  renderAccountSection();
 }
 
-function applyContent(map) {
-  document.querySelectorAll("[data-content-key]").forEach((el) => {
-    const key = el.getAttribute("data-content-key");
-    if (map[key]) el.textContent = map[key]; // textContent only -- never innerHTML from server data
-  });
+function showSignedOutGate() {
+  document.getElementById("signed-out-gate").style.display = "";
+  document.getElementById("dash-root").style.display = "none";
 }
 
 function handleCheckoutRedirect() {
@@ -132,7 +121,7 @@ function handleCheckoutRedirect() {
   if (!status) return;
   window.history.replaceState({}, "", window.location.pathname);
   if (status === "success") {
-    showToast("Payment received — welcome to Black Belt membership.");
+    showToast("Payment received — welcome to your new membership.");
   } else if (status === "cancelled") {
     showToast("Checkout was cancelled. No charge was made.");
   }
@@ -147,103 +136,179 @@ function showToast(message) {
   setTimeout(() => { el.classList.remove("show"); setTimeout(() => el.remove(), 300); }, 5000);
 }
 
-/* ---------------- RENDER: STATIC SECTIONS ---------------- */
+/* ---------------- HERO / PROGRESS ---------------- */
 
-function renderBeltStrip() {
-  const el = document.getElementById("belt-strip");
-  BELTS.forEach((b) => {
-    const chip = document.createElement("span");
-    chip.className = "belt-chip";
-    chip.style.background = b.hex;
-    if (b.outline) chip.style.border = "1px solid #55524A";
-    el.appendChild(chip);
-  });
-  const tail = document.createElement("span");
-  tail.className = "belt-strip-tail";
-  tail.textContent = "white → black, 8 ranks, no skipping";
-  el.appendChild(tail);
+function renderHero() {
+  const user = state.user;
+  const progress = state.progress;
+  const belt = beltById(progress.currentBelt);
+
+  document.getElementById("dash-hero-belt-bg").style.setProperty("--belt-color", belt.hex);
+  document.getElementById("dash-user-name").textContent = user.name;
+  document.getElementById("dash-belt-swatch").style.background = belt.hex;
+  document.getElementById("dash-belt-label").textContent = belt.name + " Belt";
+
+  const tierLabel = user.subscriptionTier
+    ? (user.subscriptionTier === "trial" ? "Free Trial" : user.subscriptionTier[0].toUpperCase() + user.subscriptionTier.slice(1) + " Member")
+    : "No active plan";
+  const memberSince = user.memberSince ? new Date(user.memberSince) : null;
+  document.getElementById("dash-member-since").textContent = tierLabel +
+    (memberSince ? ` · member since ${memberSince.toLocaleDateString(undefined, { month: "short", year: "numeric" })}` : "");
+
+  document.getElementById("dash-next-grading").textContent = progress.nextGradingDate
+    ? new Date(progress.nextGradingDate + "T00:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })
+    : "Not yet scheduled";
+
+  const targetBelt = progress.targetBelt ? beltById(progress.targetBelt).name + " Belt" : "—";
+  document.getElementById("dash-target-belt").textContent = targetBelt;
+
+  document.getElementById("dash-lesson-count").textContent =
+    `${progress.lessonsCompletedForBelt} / ${progress.lessonsTotalForBelt}`;
+
+  const pct = progress.lessonsTotalForBelt > 0
+    ? Math.round((progress.lessonsCompletedForBelt / progress.lessonsTotalForBelt) * 100)
+    : 0;
+  document.getElementById("dash-bar-fill").style.width = pct + "%";
+
+  renderPathway();
 }
 
-function renderTierGrid() {
-  const el = document.getElementById("tier-grid");
+function renderPathway() {
+  const el = document.getElementById("dash-pathway");
   el.innerHTML = "";
-  state.tiers.forEach((tier) => {
-    const belt = beltById(tier.belt);
-    const user = state.currentUser;
-    const onThisTier = user && user.subscriptionTier === tier.slug;
-    // A trial only counts as "current" while still active; once expired the
-    // card should stop saying "Current plan" and instead point at upgrading.
-    const isCurrent = onThisTier && (tier.priceCents > 0 || user.subscriptionActive);
-    const trialExhausted = tier.priceCents === 0 && user && user.trialUsed && !isCurrent;
+  const { currentBelt, targetBelt } = state.progress;
+  const currentIndex = state.beltOrder.indexOf(currentBelt);
 
-    const card = document.createElement("div");
-    card.className = "tier-card" + (tier.featured ? " featured" : "");
-
-    if (tier.featured) {
-      const flag = document.createElement("span");
-      flag.className = "tier-flag";
-      flag.textContent = "Most trained";
-      card.appendChild(flag);
-    }
-
-    card.innerHTML += `
-      <div class="tier-name-row">
-        <span class="pill-dot" style="background:${belt.hex};${belt.outline ? "border:1px solid #55524A;" : ""}"></span>
-        <h3 class="disp tier-name">${escapeHTML(tier.name.toUpperCase())}</h3>
-      </div>
-      <p class="tier-tagline">${escapeHTML(tier.tagline)}</p>
-      <div class="tier-price-row">
-        <span class="disp tier-price">${formatPrice(tier.priceCents)}</span>
-        <span class="tier-period">${escapeHTML(tier.period)}</span>
-      </div>
-      <ul class="tier-features">
-        ${tier.features.map((f) => `<li>${escapeHTML(f)}</li>`).join("")}
-      </ul>
-      ${trialExhausted ? `<p style="font-size:12px;color:var(--muted);margin:-16px 0 16px;">Already used — pick a paid plan below.</p>` : ""}
+  state.beltOrder.forEach((slug, i) => {
+    const belt = beltById(slug);
+    const node = document.createElement("div");
+    let cls = "dash-belt-node";
+    if (i < currentIndex) cls += " is-complete";
+    if (slug === currentBelt) cls += " is-current";
+    if (targetBelt && slug === targetBelt) cls += " is-target";
+    node.className = cls;
+    node.innerHTML = `
+      <span class="dash-belt-dot" style="background:${i <= currentIndex ? belt.hex : "var(--ink)"};${belt.outline ? "border-color:#55524A;" : ""}"></span>
+      <span class="dash-belt-node-label">${escapeHTML(belt.name)}</span>
     `;
-
-    const btn = document.createElement("button");
-    btn.className = "tier-btn" + (tier.featured ? " primary" : "");
-    btn.textContent = isCurrent
-      ? "Current plan"
-      : trialExhausted
-        ? "Trial used"
-        : tier.priceCents === 0
-          ? "Start 7-day trial"
-          : "Subscribe";
-    btn.disabled = isCurrent || trialExhausted;
-    btn.addEventListener("click", () => handleTierSelect(tier));
-    card.appendChild(btn);
-
-    el.appendChild(card);
+    el.appendChild(node);
   });
 }
 
-function formatPrice(cents) {
-  if (cents === 0) return "Free";
-  return "R" + (cents / 100).toFixed(0);
+/* ---------------- ANNOUNCEMENTS ---------------- */
+
+function renderAnnouncements(items) {
+  const el = document.getElementById("announcements-list");
+  if (!items.length) {
+    el.innerHTML = `<p class="empty-note-inline">No announcements right now — check back soon.</p>`;
+    return;
+  }
+  el.innerHTML = items.map((a) => `
+    <article class="announcement-item ${a.pinned ? "is-pinned" : ""}">
+      <div class="announcement-top">
+        ${a.pinned ? `<span class="announcement-pin">Pinned</span>` : ""}
+        <h3 class="announcement-title">${escapeHTML(a.title)}</h3>
+      </div>
+      <p class="announcement-body">${escapeHTML(a.body)}</p>
+      <p class="announcement-date">${new Date(a.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}</p>
+    </article>
+  `).join("");
 }
 
-function escapeHTML(str) {
-  const div = document.createElement("div");
-  div.textContent = str;
-  return div.innerHTML;
+/* ---------------- LIVE TRAINING ---------------- */
+
+function renderLiveSessions(items) {
+  const el = document.getElementById("live-list");
+  if (!items.length) {
+    el.innerHTML = `<p class="empty-note-inline">No live sessions scheduled at the moment.</p>`;
+    return;
+  }
+  el.innerHTML = items.map((s) => {
+    const d = new Date(s.sessionAt);
+    const belt = s.belt && s.belt !== "all" ? beltById(s.belt) : null;
+    return `
+      <article class="live-card">
+        <div class="live-date-block">
+          <span class="live-date-month">${d.toLocaleDateString(undefined, { month: "short" })}</span>
+          <span class="live-date-day">${d.getDate()}</span>
+        </div>
+        <div class="live-body">
+          <h3 class="live-title">${escapeHTML(s.title)}</h3>
+          <p class="live-meta">${d.toLocaleDateString(undefined, { weekday: "short", hour: "numeric", minute: "2-digit" })} · ${s.durationMinutes} min · ${escapeHTML(s.instructor)}${belt ? ` · ${escapeHTML(belt.name)} focus` : ""}</p>
+          ${s.description ? `<p class="live-desc">${escapeHTML(s.description)}</p>` : ""}
+        </div>
+        ${s.joinUrl ? `<a class="btn btn-outline" href="${escapeHTML(s.joinUrl)}" target="_blank" rel="noopener noreferrer">Join</a>` : `<span class="btn btn-outline locked-btn">Link coming soon</span>`}
+      </article>
+    `;
+  }).join("");
 }
 
-/* ---------------- RENDER: VIDEO GRID ---------------- */
+/* ---------------- LESSON LIBRARY ---------------- */
+
+function makePill(label, active, onClick) {
+  const btn = document.createElement("button");
+  btn.className = "pill" + (active ? " active" : "");
+  btn.textContent = label;
+  btn.addEventListener("click", onClick);
+  return btn;
+}
+
+function renderBeltFilters() {
+  const el = document.getElementById("dash-belt-filters");
+  el.innerHTML = "";
+  el.appendChild(makePill("All ranks", state.beltFilter === "all", () => setBeltFilter("all")));
+  BELTS.forEach((b) => {
+    const pill = makePill(b.name, state.beltFilter === b.id, () => setBeltFilter(b.id));
+    const dot = document.createElement("span");
+    dot.className = "pill-dot";
+    dot.style.background = b.hex;
+    if (b.outline) dot.style.border = "1px solid #55524A";
+    pill.prepend(dot);
+    if (b.id === state.progress.currentBelt) {
+      const tag = document.createElement("span");
+      tag.textContent = " (you)";
+      tag.style.opacity = "0.6";
+      pill.appendChild(tag);
+    }
+    el.appendChild(pill);
+  });
+}
+
+function renderTypeFilters() {
+  const el = document.getElementById("dash-type-filters");
+  el.innerHTML = "";
+  el.appendChild(makePill("All types", state.typeFilter === "all", () => setTypeFilter("all")));
+  TYPES.forEach((t) => el.appendChild(makePill(t, state.typeFilter === t, () => setTypeFilter(t))));
+}
+
+function setBeltFilter(id) { state.beltFilter = id; renderBeltFilters(); renderVideoGrid(); }
+function setTypeFilter(t) { state.typeFilter = t; renderTypeFilters(); renderVideoGrid(); }
+
+function isLocked(video) {
+  return !video.unlocked;
+}
 
 function renderVideoGrid() {
-  const grid = document.getElementById("video-grid");
-  const emptyNote = document.getElementById("empty-note");
+  const grid = document.getElementById("dash-video-grid");
+  const emptyNote = document.getElementById("dash-empty-note");
   grid.innerHTML = "";
 
-  // Public page shows a fixed, small teaser -- not a browsable library.
-  // The real library lives behind sign-in, in the student dashboard.
-  const preview = state.videos.slice(0, 3);
-  emptyNote.classList.toggle("hidden", preview.length > 0);
+  // Only show videos this student can actually open -- server-side "unlocked"
+  // already accounts for both subscription status and belt rank, so a
+  // trial/no-plan student or a student below the required rank doesn't get
+  // a wall of locked cards cluttering their page.
+  const accessible = state.videos.filter((v) => v.unlocked);
 
-  preview.forEach((v) => {
+  const filtered = accessible.filter(
+    (v) => (state.beltFilter === "all" || v.belt === state.beltFilter) &&
+           (state.typeFilter === "all" || v.type === state.typeFilter)
+  );
+  emptyNote.classList.toggle("hidden", filtered.length > 0);
+
+  filtered.forEach((v) => {
     const belt = beltById(v.belt);
+    const locked = isLocked(v);
+    const done = state.completedVideoIds.has(v.id);
 
     const card = document.createElement("div");
     card.className = "video-card";
@@ -254,9 +319,10 @@ function renderVideoGrid() {
 
     card.innerHTML = `
       <div class="video-thumb" style="background: linear-gradient(135deg, ${belt.hex} 0%, #121212 130%);">
-        <div class="video-play-circle">${lockIconHTML()}</div>
+        <div class="video-play-circle">${locked ? lockIconHTML() : playIconHTML()}</div>
         <span class="video-duration">${escapeHTML(v.duration)}</span>
         <span class="video-lesson-tag" style="background:${belt.hex};color:${belt.text};">${belt.name} · Lesson ${String(v.lesson).padStart(2, "0")}</span>
+        ${done ? `<span class="video-duration" style="left:10px;right:auto;background:rgba(62,142,92,0.85);">✓ Done</span>` : ""}
       </div>
       <div class="video-body">
         <span class="video-type">${escapeHTML(v.type)}</span>
@@ -266,6 +332,8 @@ function renderVideoGrid() {
     `;
     grid.appendChild(card);
   });
+
+  applyCollapsible(grid, 3);
 }
 
 function playIconHTML() {
@@ -275,104 +343,50 @@ function lockIconHTML() {
   return `<span class="lock-wrap"><span class="icon-lock"></span><span class="icon-lock-body"></span></span>`;
 }
 
-function isLocked(video) {
-  return video.premium && !(state.currentUser && state.currentUser.subscriptionActive);
-}
+/**
+ * Shows only the first `visibleCount` children of a grid container and adds
+ * a "Show N more" toggle for the rest, so long lists (videos, guides,
+ * resource cards) don't dump everything on the page at once. Call this
+ * AFTER the container's cards have been rendered/appended.
+ */
+function applyCollapsible(container, visibleCount = 3) {
+  if (!container) return;
+  const oldToggle = document.getElementById(container.id + "-toggle");
+  if (oldToggle) oldToggle.remove();
 
-/* ---------------- EVENTS CAROUSEL ---------------- */
+  const cards = Array.from(container.children);
+  cards.forEach((card) => card.classList.remove("collapsible-hidden"));
+  if (cards.length <= visibleCount) return;
 
-function formatEventDate(dateStr) {
-  if (!dateStr) return "";
-  const d = new Date(dateStr + "T00:00:00");
-  if (isNaN(d)) return "";
-  return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
-}
-
-function renderEventsCarousel(events) {
-  const section = document.getElementById("events");
-  const track = document.getElementById("events-track");
-  const dotsEl = document.getElementById("events-dots");
-  if (!track) return;
-
-  if (!events || events.length === 0) {
-    if (section) section.classList.add("hidden");
-    return;
-  }
-
-  track.innerHTML = events.map((e) => `
-    <article class="event-card">
-      <div class="event-card-banner" ${e.imageUrl ? `style="background-image:url('${escapeHTML(e.imageUrl)}');background-size:cover;background-position:center;"` : ""}>
-        ${e.eventDate ? `<span class="event-card-date">${escapeHTML(formatEventDate(e.eventDate))}</span>` : ""}
-      </div>
-      <div class="event-card-body">
-        ${e.location ? `<span class="event-card-location">${escapeHTML(e.location)}</span>` : ""}
-        <h3 class="event-card-title">${escapeHTML(e.title)}</h3>
-        ${e.description ? `<p class="event-card-desc">${escapeHTML(e.description)}</p>` : ""}
-        ${e.linkUrl ? `<a class="event-card-link" href="${escapeHTML(e.linkUrl)}" target="_blank" rel="noopener noreferrer">Learn more →</a>` : ""}
-      </div>
-    </article>
-  `).join("");
-
-  dotsEl.innerHTML = "";
-  events.forEach((_, i) => {
-    const dot = document.createElement("button");
-    dot.className = "carousel-dot" + (i === 0 ? " active" : "");
-    dot.setAttribute("aria-label", `Go to event ${i + 1}`);
-    dot.addEventListener("click", () => scrollCarouselToIndex(i));
-    dotsEl.appendChild(dot);
+  cards.forEach((card, i) => {
+    if (i >= visibleCount) card.classList.add("collapsible-hidden");
   });
 
-  wireCarouselControls();
-}
-
-function scrollCarouselToIndex(i) {
-  const track = document.getElementById("events-track");
-  const card = track.children[i];
-  if (card) track.scrollTo({ left: card.offsetLeft - track.offsetLeft, behavior: "smooth" });
-}
-
-function wireCarouselControls() {
-  const track = document.getElementById("events-track");
-  const prevBtn = document.getElementById("events-prev");
-  const nextBtn = document.getElementById("events-next");
-  const dotsEl = document.getElementById("events-dots");
-  if (!track || track.dataset.wired) return;
-  track.dataset.wired = "true";
-
-  function cardWidth() {
-    const card = track.children[0];
-    return card ? card.getBoundingClientRect().width + 20 : 300; // + gap
-  }
-
-  prevBtn.addEventListener("click", () => track.scrollBy({ left: -cardWidth(), behavior: "smooth" }));
-  nextBtn.addEventListener("click", () => track.scrollBy({ left: cardWidth(), behavior: "smooth" }));
-
-  function updateActiveState() {
-    const index = Math.round(track.scrollLeft / cardWidth());
-    [...dotsEl.children].forEach((dot, i) => dot.classList.toggle("active", i === index));
-    prevBtn.disabled = track.scrollLeft <= 4;
-    nextBtn.disabled = track.scrollLeft >= track.scrollWidth - track.clientWidth - 4;
-  }
-
-  let scrollTimer;
-  track.addEventListener("scroll", () => {
-    clearTimeout(scrollTimer);
-    scrollTimer = setTimeout(updateActiveState, 80);
+  const hiddenCount = cards.length - visibleCount;
+  const toggleWrap = document.createElement("div");
+  toggleWrap.className = "collapsible-toggle-wrap";
+  toggleWrap.id = container.id + "-toggle";
+  const btn = document.createElement("button");
+  btn.className = "btn btn-outline";
+  btn.type = "button";
+  btn.textContent = `Show ${hiddenCount} more`;
+  let expanded = false;
+  btn.addEventListener("click", () => {
+    expanded = !expanded;
+    cards.forEach((card, i) => {
+      if (i >= visibleCount) card.classList.toggle("collapsible-hidden", !expanded);
+    });
+    btn.textContent = expanded ? "Show less" : `Show ${hiddenCount} more`;
+    if (!expanded) container.scrollIntoView({ behavior: "smooth", block: "nearest" });
   });
-  updateActiveState();
+  toggleWrap.appendChild(btn);
+  container.insertAdjacentElement("afterend", toggleWrap);
 }
 
-/* ---------------- MODALS ---------------- */
+/* --- Video modal (mirrors app.js's, plus a mark-complete toggle) --- */
 
 const modalRoot = document.getElementById("modal-root");
-
-function closeModal() {
-  modalRoot.innerHTML = "";
-  state.authMode = null;
-  state.authError = "";
-  state.authNotice = "";
-  state.authBusy = false;
-}
+function closeModal() { modalRoot.innerHTML = ""; }
 
 function openOverlay(bodyHTML, onMount) {
   modalRoot.innerHTML = `
@@ -383,36 +397,11 @@ function openOverlay(bodyHTML, onMount) {
       </div>
     </div>
   `;
-  document.getElementById("overlay").addEventListener("click", (e) => {
-    if (e.target.id === "overlay") closeModal();
-  });
+  document.getElementById("overlay").addEventListener("click", (e) => { if (e.target.id === "overlay") closeModal(); });
   document.getElementById("modal-close-btn").addEventListener("click", closeModal);
   if (onMount) onMount();
 }
 
-/* --- Video modal --- */
-
-function openVideoModal(video) {
-  const belt = beltById(video.belt);
-
-  openOverlay(`
-    <div class="modal-body" style="text-align:center;padding:50px 32px;">
-      <div class="lock-wrap" style="margin-bottom:16px;">${lockIconHTML()}</div>
-      <span class="video-type">${escapeHTML(video.type)} · ${belt.name} belt · Lesson ${String(video.lesson).padStart(2, "0")}</span>
-      <h3 class="disp" style="font-size:26px;margin:10px 0 6px;">${escapeHTML(video.title)}</h3>
-      <p style="color:var(--muted);font-size:14px;margin-bottom:14px;">${escapeHTML(video.instructor)} · ${escapeHTML(video.duration)}</p>
-      ${video.caption ? `<p style="font-size:14px;color:#D4D1C6;margin-bottom:26px;max-width:380px;margin-left:auto;margin-right:auto;">${escapeHTML(video.caption)}</p>` : ""}
-      <button class="btn btn-hero" id="go-signup">Sign up to watch</button>
-    </div>
-  `, () => {
-    document.getElementById("go-signup").addEventListener("click", () => {
-      closeModal();
-      openAuthModal("signup");
-    });
-  });
-}
-
-/** Turns a plain YouTube/Vimeo URL into an embeddable iframe. Falls back to a plain link for anything else. */
 function embedForUrl(url) {
   try {
     const u = new URL(url);
@@ -430,463 +419,302 @@ function embedForUrl(url) {
     }
     return `<div style="padding:24px;text-align:center;"><a href="${escapeHTML(url)}" target="_blank" rel="noopener noreferrer" class="btn btn-outline">Open video</a></div>`;
   } catch {
-    return "";
+    return `<div style="padding:24px;text-align:center;"><a href="${escapeHTML(url)}" target="_blank" rel="noopener noreferrer" class="btn btn-outline">Open video</a></div>`;
   }
 }
 
-/* --- Auth modal (sign in / sign up / verify / forgot / reset) --- */
+function openVideoModal(video) {
+  const belt = beltById(video.belt);
 
-function openAuthModal(mode) {
-  state.authMode = mode;
-  state.authError = "";
-  state.authNotice = "";
-  renderAuthModal();
-}
-
-function field(id, label, type, placeholder) {
-  return `
-    <label class="field">
-      <span class="field-label">${label}</span>
-      <input class="field-input" id="field-${id}" type="${type}" placeholder="${placeholder}" required />
-    </label>
-  `;
-}
-
-function renderAuthModal() {
-  const mode = state.authMode;
-  const messages = state.authError
-    ? `<p class="field-error">${escapeHTML(state.authError)}</p>`
-    : state.authNotice
-      ? `<p class="field-notice">${escapeHTML(state.authNotice)}</p>`
-      : "";
-
-  if (mode === "signin" || mode === "signup") {
-    const isSignup = mode === "signup";
+  if (isLocked(video)) {
     openOverlay(`
-      <div class="auth-tabs">
-        <button class="auth-tab ${!isSignup ? "active" : ""}" id="tab-signin">Sign in</button>
-        <button class="auth-tab ${isSignup ? "active" : ""}" id="tab-signup">Create account</button>
+      <div class="modal-body" style="text-align:center;padding:50px 32px;">
+        <div class="lock-wrap" style="margin-bottom:16px;">${lockIconHTML()}</div>
+        <h3 class="disp" style="font-size:28px;margin:0 0 10px;">MEMBERS ONLY</h3>
+        <p style="color:var(--muted);margin-bottom:26px;max-width:380px;margin-left:auto;margin-right:auto;">
+          "${escapeHTML(video.title)}" is part of the full library. Upgrade your membership to unlock every rank.
+        </p>
+        <a class="btn btn-primary" href="index.html#membership">View membership</a>
       </div>
-      <form class="modal-body" id="auth-form">
-        <h3 class="disp" style="font-size:26px;margin:0 0 4px;">${isSignup ? "CREATE ACCOUNT" : "WELCOME BACK"}</h3>
-        <p style="color:var(--muted);font-size:14px;margin-bottom:22px;">
-          ${isSignup ? "Sign up to start training and track your rank." : "Sign in to your dojo account."}
-        </p>
-        ${isSignup ? field("name", "Full name", "text", "Jane Kim") : ""}
-        ${field("email", "Email", "email", "jane@example.com")}
-        ${field("password", "Password", "password", isSignup ? "At least 8 characters" : "••••••••")}
-        ${messages}
-        <button type="submit" class="btn btn-primary btn-block" ${state.authBusy ? "disabled" : ""}>
-          ${state.authBusy ? "Please wait…" : isSignup ? "Create account" : "Sign in"}
-        </button>
-        ${!isSignup ? `<button type="button" class="link-btn" id="go-forgot" style="margin-top:14px;">Forgot password?</button>` : ""}
-      </form>
-    `, () => {
-      document.getElementById("tab-signin").addEventListener("click", () => openAuthModal("signin"));
-      document.getElementById("tab-signup").addEventListener("click", () => openAuthModal("signup"));
-      document.getElementById("auth-form").addEventListener("submit", handleAuthSubmit);
-      const forgotBtn = document.getElementById("go-forgot");
-      if (forgotBtn) forgotBtn.addEventListener("click", () => openAuthModal("forgot"));
-    });
+    `);
     return;
   }
 
-  if (mode === "login-otp") {
-    openOverlay(`
-      <form class="modal-body" id="login-otp-form">
-        <h3 class="disp" style="font-size:26px;margin:0 0 4px;">ENTER YOUR CODE</h3>
-        <p style="color:var(--muted);font-size:14px;margin-bottom:22px;">
-          We sent a 6-digit sign-in code to <strong style="color:var(--bone);">${escapeHTML(state.pendingLoginEmail || "")}</strong>.
-        </p>
-        ${field("otp", "Sign-in code", "text", "123456")}
-        ${messages}
-        <button type="submit" class="btn btn-primary btn-block" ${state.authBusy ? "disabled" : ""}>
-          ${state.authBusy ? "Verifying…" : "Sign in"}
-        </button>
-        <button type="button" class="link-btn" id="resend-login-otp" style="margin-top:14px;">Resend code</button>
-      </form>
-    `, () => {
-      document.getElementById("login-otp-form").addEventListener("submit", handleLoginOtpSubmit);
-      document.getElementById("resend-login-otp").addEventListener("click", handleResendLoginOtp);
+  const playerHTML = video.videoUrl
+    ? `<div class="video-embed">${embedForUrl(video.videoUrl)}</div>`
+    : `<div class="video-thumb" style="height:260px;background:linear-gradient(135deg, ${belt.hex} 0%, #121212 140%);">
+         <div class="video-play-circle" style="width:68px;height:68px;">${playIconHTML()}</div>
+       </div>`;
+
+  const done = state.completedVideoIds.has(video.id);
+
+  openOverlay(`
+    <div>
+      ${playerHTML}
+      <div class="modal-body">
+        <span class="video-type">${escapeHTML(video.type)} · ${belt.name} belt · Lesson ${String(video.lesson).padStart(2, "0")}</span>
+        <h3 style="font-size:22px;margin:8px 0 6px;">${escapeHTML(video.title)}</h3>
+        <p style="color:var(--muted);font-size:14px;margin-bottom:10px;">${escapeHTML(video.instructor)} · ${escapeHTML(video.duration)}</p>
+        ${video.caption ? `<p style="font-size:14px;color:#D4D1C6;margin-bottom:18px;">${escapeHTML(video.caption)}</p>` : ""}
+        <button class="btn ${done ? "btn-outline" : "btn-primary"}" id="mark-complete-btn">${done ? "✓ Marked complete" : "Mark as complete"}</button>
+      </div>
+    </div>
+  `, () => {
+    document.getElementById("mark-complete-btn").addEventListener("click", async () => {
+      const nowDone = state.completedVideoIds.has(video.id);
+      try {
+        await api(`/progress/videos/${video.id}`, { method: nowDone ? "DELETE" : "POST" });
+        if (nowDone) state.completedVideoIds.delete(video.id); else state.completedVideoIds.add(video.id);
+        closeModal();
+        openVideoModal(video);
+        renderVideoGrid();
+        await refreshProgress();
+      } catch (err) {
+        alert(err.message);
+      }
     });
+  });
+}
+
+async function refreshProgress() {
+  try {
+    const dash = await api("/dashboard");
+    state.progress = dash.progress;
+    document.getElementById("dash-next-grading").textContent = state.progress.nextGradingDate
+      ? new Date(state.progress.nextGradingDate + "T00:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })
+      : "Not yet scheduled";
+    document.getElementById("dash-lesson-count").textContent =
+      `${state.progress.lessonsCompletedForBelt} / ${state.progress.lessonsTotalForBelt}`;
+    const pct = state.progress.lessonsTotalForBelt > 0
+      ? Math.round((state.progress.lessonsCompletedForBelt / state.progress.lessonsTotalForBelt) * 100)
+      : 0;
+    document.getElementById("dash-bar-fill").style.width = pct + "%";
+  } catch { /* non-critical */ }
+}
+
+/* ---------------- TRAINING GUIDES ---------------- */
+
+function renderGuides() {
+  const el = document.getElementById("guide-grid");
+  if (!state.guides.length) {
+    el.innerHTML = `<p class="empty-note-inline">No guides published yet.</p>`;
     return;
   }
+  el.innerHTML = state.guides.map((g) => {
+    const belt = g.belt && g.belt !== "all" ? beltById(g.belt) : null;
+    return `
+      <article class="guide-card">
+        <div class="guide-icon"><span class="guide-icon-label">PDF</span></div>
+        <h3 class="guide-title">${escapeHTML(g.title)}</h3>
+        <p class="guide-desc">${escapeHTML(g.description)}</p>
+        <span class="guide-belt-tag">${belt ? escapeHTML(belt.name) + " belt" : "All ranks"}</span>
+        ${g.locked
+          ? `<a class="btn btn-outline locked-btn" href="index.html#membership">Members only</a>`
+          : (g.fileUrl ? `<a class="btn btn-outline" href="${escapeHTML(g.fileUrl)}" target="_blank" rel="noopener noreferrer">Download</a>` : `<span class="btn btn-outline locked-btn">Coming soon</span>`)}
+      </article>
+    `;
+  }).join("");
+  applyCollapsible(el, 3);
+}
 
-  if (mode === "verify") {
-    openOverlay(`
-      <form class="modal-body" id="verify-form">
-        <h3 class="disp" style="font-size:26px;margin:0 0 4px;">CHECK YOUR EMAIL</h3>
-        <p style="color:var(--muted);font-size:14px;margin-bottom:22px;">
-          We sent a 6-digit code to <strong style="color:var(--bone);">${escapeHTML(state.currentUser?.email || "")}</strong>.
-        </p>
-        ${field("otp", "Verification code", "text", "123456")}
-        ${messages}
-        <button type="submit" class="btn btn-primary btn-block" ${state.authBusy ? "disabled" : ""}>
-          ${state.authBusy ? "Verifying…" : "Verify email"}
-        </button>
-        <button type="button" class="link-btn" id="resend-otp" style="margin-top:14px;">Resend code</button>
-        <button type="button" class="link-btn" id="skip-verify" style="margin-top:8px; display:block;">Skip for now</button>
-      </form>
-    `, () => {
-      document.getElementById("verify-form").addEventListener("submit", handleVerifySubmit);
-      document.getElementById("resend-otp").addEventListener("click", handleResendOtp);
-      document.getElementById("skip-verify").addEventListener("click", () => { window.location.href = "dashboard.html"; });
-    });
+/* ---------------- RESOURCE SECTIONS ---------------- */
+
+function renderResourceGroup(elementId, items, compact) {
+  const el = document.getElementById(elementId);
+  if (!el) return;
+  if (!items.length) {
+    el.innerHTML = `<p class="empty-note-inline">Nothing here yet.</p>`;
     return;
   }
-
-  if (mode === "forgot") {
-    openOverlay(`
-      <form class="modal-body" id="forgot-form">
-        <h3 class="disp" style="font-size:26px;margin:0 0 4px;">RESET PASSWORD</h3>
-        <p style="color:var(--muted);font-size:14px;margin-bottom:22px;">Enter your account email and we'll send a reset code.</p>
-        ${field("email", "Email", "email", "jane@example.com")}
-        ${messages}
-        <button type="submit" class="btn btn-primary btn-block" ${state.authBusy ? "disabled" : ""}>
-          ${state.authBusy ? "Sending…" : "Send reset code"}
-        </button>
-        <button type="button" class="link-btn" id="back-signin" style="margin-top:14px;">Back to sign in</button>
-      </form>
-    `, () => {
-      document.getElementById("forgot-form").addEventListener("submit", handleForgotSubmit);
-      document.getElementById("back-signin").addEventListener("click", () => openAuthModal("signin"));
-    });
-    return;
-  }
-
-  if (mode === "reset") {
-    openOverlay(`
-      <form class="modal-body" id="reset-form">
-        <h3 class="disp" style="font-size:26px;margin:0 0 4px;">ENTER NEW PASSWORD</h3>
-        <p style="color:var(--muted);font-size:14px;margin-bottom:22px;">
-          Enter the code sent to <strong style="color:var(--bone);">${escapeHTML(state.resetEmail)}</strong> and choose a new password.
-        </p>
-        ${field("otp", "Reset code", "text", "123456")}
-        ${field("password", "New password", "password", "At least 8 characters")}
-        ${messages}
-        <button type="submit" class="btn btn-primary btn-block" ${state.authBusy ? "disabled" : ""}>
-          ${state.authBusy ? "Resetting…" : "Reset password"}
-        </button>
-      </form>
-    `, () => {
-      document.getElementById("reset-form").addEventListener("submit", handleResetSubmit);
-    });
-    return;
-  }
+  el.innerHTML = items.map((r) => `
+    <article class="resource-card ${r.locked ? "is-locked" : ""}">
+      <h3 class="resource-card-title">${escapeHTML(r.title)}</h3>
+      ${r.locked
+        ? `<p class="resource-lock-note">${lockIconHTML()} Members only</p>`
+        : `<p class="resource-card-body">${escapeHTML(r.body)}</p>`}
+    </article>
+  `).join("");
+  applyCollapsible(el, compact ? 6 : 3);
 }
 
-async function handleAuthSubmit(e) {
-  e.preventDefault();
-  const isSignup = state.authMode === "signup";
-  const name = isSignup ? document.getElementById("field-name").value.trim() : null;
-  const email = document.getElementById("field-email").value.trim();
-  const password = document.getElementById("field-password").value;
-
-  state.authBusy = true;
-  state.authError = "";
-  renderAuthModal();
-
-  try {
-    const payload = isSignup ? { name, email, password } : { email, password };
-
-    const data = await api(isSignup ? "/auth/signup" : "/auth/login", {
-      method: "POST",
-      body: JSON.stringify(payload),
-    });
-
-    if (isSignup) {
-      setToken(data.token);
-      state.currentUser = data.user;
-      updateNavAuthState();
-      renderTierGrid();
-      renderVideoGrid();
-      state.authBusy = false;
-      openAuthModal("verify");
-      return;
-    }
-
-    // Login is now two-step: password, then an emailed code -- data.token
-    // isn't issued until that code is confirmed in handleLoginOtpSubmit.
-    state.authBusy = false;
-    state.pendingLoginEmail = data.email;
-    openAuthModal("login-otp");
-  } catch (err) {
-    state.authBusy = false;
-    state.authError = err.message;
-    renderAuthModal();
-  }
-}
-
-async function handleLoginOtpSubmit(e) {
-  e.preventDefault();
-  const code = document.getElementById("field-otp").value.trim();
-  state.authBusy = true;
-  state.authError = "";
-  renderAuthModal();
-  try {
-    const data = await api("/auth/login-verify", {
-      method: "POST",
-      body: JSON.stringify({ email: state.pendingLoginEmail, code }),
-    });
-    setToken(data.token);
-    state.currentUser = data.user;
-    updateNavAuthState();
-    renderTierGrid();
-    renderVideoGrid();
-    await resumePendingTierOrClose();
-  } catch (err) {
-    state.authBusy = false;
-    state.authError = err.message;
-    renderAuthModal();
-  }
-}
-
-async function handleResendLoginOtp() {
-  state.authError = "";
-  try {
-    await api("/auth/login-resend-otp", { method: "POST", body: JSON.stringify({ email: state.pendingLoginEmail }) });
-    state.authNotice = "A new code is on its way.";
-  } catch (err) {
-    state.authError = err.message;
-  }
-  renderAuthModal();
-}
-
-async function handleVerifySubmit(e) {
-  e.preventDefault();
-  const code = document.getElementById("field-otp").value.trim();
-  state.authBusy = true;
-  state.authError = "";
-  renderAuthModal();
-  try {
-    await api("/auth/verify-email", { method: "POST", body: JSON.stringify({ code }) });
-    state.currentUser.emailVerified = true;
-    updateNavAuthState();
-    await resumePendingTierOrClose();
-  } catch (err) {
-    state.authBusy = false;
-    state.authError = err.message;
-    renderAuthModal();
-  }
-}
-
-async function handleResendOtp() {
-  state.authError = "";
-  try {
-    await api("/auth/resend-verification", { method: "POST" });
-    state.authNotice = "A new code is on its way.";
-  } catch (err) {
-    state.authError = err.message;
-  }
-  renderAuthModal();
-}
-
-async function handleForgotSubmit(e) {
-  e.preventDefault();
-  const email = document.getElementById("field-email").value.trim();
-  state.authBusy = true;
-  state.authError = "";
-  renderAuthModal();
-  try {
-    await api("/auth/forgot-password", { method: "POST", body: JSON.stringify({ email }) });
-    state.resetEmail = email;
-    state.authBusy = false;
-    openAuthModal("reset");
-  } catch (err) {
-    state.authBusy = false;
-    state.authError = err.message;
-    renderAuthModal();
-  }
-}
-
-async function handleResetSubmit(e) {
-  e.preventDefault();
-  const code = document.getElementById("field-otp").value.trim();
-  const newPassword = document.getElementById("field-password").value;
-  state.authBusy = true;
-  state.authError = "";
-  renderAuthModal();
-  try {
-    await api("/auth/reset-password", {
-      method: "POST",
-      body: JSON.stringify({ email: state.resetEmail, code, newPassword }),
-    });
-    state.authBusy = false;
-    state.authError = "";
-    openAuthModal("signin");
-    state.authNotice = "Password reset. Sign in with your new password.";
-    renderAuthModal();
-  } catch (err) {
-    state.authBusy = false;
-    state.authError = err.message;
-    renderAuthModal();
-  }
-}
-
-async function resumePendingTierOrClose() {
-  if (state.pendingTier) {
-    const tier = state.pendingTier;
-    state.pendingTier = null;
-    if (tier.priceCents === 0) {
-      await subscribeToFreeTier(tier);
-      window.location.href = "dashboard.html";
-    } else {
-      closeModal();
-      await startCheckout(tier); // redirects to Stripe; returns to dashboard.html on completion
-    }
-  } else {
-    window.location.href = "dashboard.html";
-  }
-}
-
-/* --- Subscriptions / Stripe checkout --- */
-
-async function handleTierSelect(tier) {
-  if (!state.currentUser) {
-    state.pendingTier = tier;
-    openAuthModal("signup");
-    return;
-  }
-  if (tier.priceCents === 0) {
-    await subscribeToFreeTier(tier);
-    return;
-  }
-  await startCheckout(tier);
-}
-
-async function subscribeToFreeTier(tier) {
-  try {
-    const data = await api("/subscriptions", { method: "POST", body: JSON.stringify({ tierSlug: tier.slug }) });
-    state.currentUser = data.user;
-    updateNavAuthState();
-    renderTierGrid();
-    renderVideoGrid();
-  } catch (err) {
-    alert(err.message);
-  }
-}
-
-// Paid tiers redirect to Stripe's own hosted checkout page -- card details
-// are typed there, never collected by this app.
-async function startCheckout(tier) {
-  try {
-    const data = await api("/checkout/create-session", { method: "POST", body: JSON.stringify({ tierSlug: tier.slug }) });
-    if (data.url) {
-      window.location.href = data.url;
-    } else {
-      alert("Checkout is not fully configured yet.");
-    }
-  } catch (err) {
-    alert(err.message);
-  }
-}
-
-/* ---------------- NAV AUTH STATE ---------------- */
-
-function updateNavAuthState() {
-  const badge = document.getElementById("tier-badge");
-  const signInBtn = document.getElementById("nav-signin");
-  const joinBtn = document.getElementById("nav-join");
-  const dashboardBtn = document.getElementById("nav-dashboard");
-  dashboardBtn.classList.toggle("hidden", !state.currentUser);
-
-  if (state.currentUser) {
-    const sub = state.currentUser.subscriptionTier;
-    if (sub === "trial" && state.currentUser.subscriptionActive) {
-      const daysLeft = Math.max(0, Math.ceil((new Date(state.currentUser.trialEndsAt) - Date.now()) / 86400000));
-      badge.textContent = `Trial · ${daysLeft} day${daysLeft === 1 ? "" : "s"} left`;
-      badge.classList.remove("hidden");
-      badge.onclick = null;
-      badge.style.cursor = "default";
-    } else if (sub === "trial" && !state.currentUser.subscriptionActive) {
-      badge.textContent = "Trial expired";
-      badge.classList.remove("hidden");
-      badge.onclick = () => scrollToId("membership");
-      badge.style.cursor = "pointer";
-    } else if (sub) {
-      const tier = state.tiers.find((t) => t.slug === sub);
-      badge.textContent = tier ? tier.name : sub;
-      badge.classList.remove("hidden");
-      badge.onclick = null;
-      badge.style.cursor = "default";
-    } else if (!state.currentUser.emailVerified) {
-      badge.textContent = "Verify email";
-      badge.classList.remove("hidden");
-      badge.onclick = () => openAuthModal("verify");
-      badge.style.cursor = "pointer";
-    } else {
-      badge.classList.add("hidden");
-    }
-    signInBtn.textContent = "Log out (" + state.currentUser.name.split(" ")[0] + ")";
-    signInBtn.onclick = handleLogout;
-    joinBtn.textContent = state.currentUser.subscriptionActive ? "Manage" : "Join now";
-  } else {
-    badge.classList.add("hidden");
-    signInBtn.textContent = "Sign in";
-    signInBtn.onclick = () => openAuthModal("signin");
-    joinBtn.textContent = "Join now";
-  }
-}
-
-async function handleLogout() {
-  try { await api("/auth/logout", { method: "POST" }); } catch { /* token already invalid, fine */ }
-  clearToken();
-  state.currentUser = null;
-  updateNavAuthState();
-  renderTierGrid();
-  renderVideoGrid();
-}
-
-/* ---------------- SCROLL / NAV WIRING ---------------- */
-
-function scrollToId(id) {
-  document.getElementById(id).scrollIntoView({ behavior: "smooth", block: "start" });
-}
+/* ---------------- NAV ---------------- */
 
 function wireNav() {
-  document.getElementById("nav-home").addEventListener("click", () => window.scrollTo({ top: 0, behavior: "smooth" }));
-  document.getElementById("nav-library").addEventListener("click", () => scrollToId("library"));
-  document.getElementById("nav-membership").addEventListener("click", () => scrollToId("membership"));
-  document.getElementById("hero-watch").addEventListener("click", () => scrollToId("library"));
-  document.getElementById("nav-join").addEventListener("click", () => scrollToId("membership"));
-  document.getElementById("library-cta").addEventListener("click", () => openAuthModal("signup"));
-  document.getElementById("nav-signin").addEventListener("click", () => openAuthModal("signin"));
-  document.getElementById("nav-dashboard").addEventListener("click", () => { window.location.href = "dashboard.html"; });
+  document.getElementById("nav-home").addEventListener("click", () => { window.location.href = "index.html"; });
+  document.getElementById("nav-signout").addEventListener("click", async () => {
+    try { await api("/auth/logout", { method: "POST" }); } catch { /* fine */ }
+    clearToken();
+    window.location.href = "index.html";
+  });
+
+  const badge = document.getElementById("tier-badge");
+  if (state.user.subscriptionTier) {
+    badge.textContent = state.user.subscriptionActive ? "Active member" : "Membership inactive";
+    badge.classList.remove("hidden");
+  }
 
   const menuToggle = document.getElementById("menu-toggle");
   const navLinks = document.getElementById("nav-links");
-
   function setMenuOpen(open) {
     navLinks.classList.toggle("open", open);
     menuToggle.classList.toggle("active", open);
     menuToggle.setAttribute("aria-expanded", String(open));
   }
-
   menuToggle.addEventListener("click", () => setMenuOpen(!navLinks.classList.contains("open")));
-
-  navLinks.addEventListener("click", (e) => {
-    if (e.target.closest("button")) setMenuOpen(false);
-  });
-
   document.addEventListener("click", (e) => {
-    if (navLinks.classList.contains("open") && !navLinks.contains(e.target) && !menuToggle.contains(e.target)) {
-      setMenuOpen(false);
-    }
+    if (navLinks.classList.contains("open") && !navLinks.contains(e.target) && !menuToggle.contains(e.target)) setMenuOpen(false);
   });
+}
 
-  document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") setMenuOpen(false);
+function wireQuickNav() {
+  document.querySelectorAll(".dash-quicknav [data-jump]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const target = document.getElementById(btn.dataset.jump);
+      if (target) target.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
   });
+}
 
-  window.addEventListener("resize", () => {
-    if (window.innerWidth > 860) setMenuOpen(false);
+/* ---------------- ACCOUNT ---------------- */
+
+const TIER_NAMES = { trial: "Free Trial", standard: "Academy Member", advanced: "Advanced Member" };
+
+function renderSubscriptionBanner() {
+  const user = state.user;
+  const banner = document.getElementById("subscription-banner");
+  const isPaid = user.subscriptionTier === "standard" || user.subscriptionTier === "advanced";
+
+  let html = null;
+  let notice = false; // notice = gold/informational, otherwise red/urgent
+
+  if (isPaid && user.accountStatus === "payment_failed") {
+    html = `<span>Your last payment didn't go through. Update your payment method to keep your dashboard access.</span>
+            <button class="btn btn-light" id="banner-fix-payment">Update payment method</button>`;
+  } else if (isPaid && user.accountStatus === "cancelled") {
+    html = `<span>Your subscription has ended, so full-library access is paused.</span>
+            <a class="btn btn-light" href="index.html#membership">Choose a membership</a>`;
+  } else if (isPaid && user.accountStatus === "paused") {
+    notice = true;
+    html = `<span>Your membership is on hold. Resume it any time to get your full access back.</span>
+            <button class="btn btn-outline" id="banner-jump-account">Resume in Account</button>`;
+  } else if (user.subscriptionTier === "trial" && user.trialEndsAt && new Date(user.trialEndsAt) <= new Date()) {
+    html = `<span>Your free trial has ended. Choose a membership to keep training with the full library.</span>
+            <a class="btn btn-light" href="index.html#membership">Choose a membership</a>`;
+  } else if (!user.subscriptionTier) {
+    notice = true;
+    html = `<span>You haven't chosen a membership yet — pick one to unlock lessons and guides beyond your free preview.</span>
+            <a class="btn btn-outline" href="index.html#membership">Choose a membership</a>`;
+  }
+
+  if (!html) {
+    banner.classList.add("hidden");
+    banner.innerHTML = "";
+    return;
+  }
+
+  banner.classList.remove("hidden");
+  banner.classList.toggle("is-notice", notice);
+  banner.innerHTML = html;
+
+  const fixBtn = document.getElementById("banner-fix-payment");
+  if (fixBtn) fixBtn.addEventListener("click", handleManageBilling);
+
+  const jumpBtn = document.getElementById("banner-jump-account");
+  if (jumpBtn) jumpBtn.addEventListener("click", () => document.getElementById("account").scrollIntoView({ behavior: "smooth" }));
+}
+
+function renderAccountSection() {
+  const user = state.user;
+  const infoEl = document.getElementById("account-info");
+  const actionsEl = document.getElementById("account-actions");
+
+  const rows = [
+    ["Name", user.name],
+    ["Email", user.email],
+    ["Email verified", user.emailVerified ? "Yes" : "No"],
+    ["Membership", user.subscriptionTier ? (TIER_NAMES[user.subscriptionTier] || user.subscriptionTier) : "None yet"],
+  ];
+  if (user.subscriptionTier === "trial" && user.trialEndsAt) {
+    rows.push(["Trial ends", new Date(user.trialEndsAt).toLocaleDateString()]);
+  }
+  if (user.subscriptionTier && user.subscriptionTier !== "trial") {
+    rows.push(["Account status", user.accountStatus === "paused" ? "On hold" : "Active"]);
+  }
+
+  infoEl.innerHTML = rows.map(([label, value]) => `
+    <div class="info-row">
+      <span class="info-row-label">${escapeHTML(label)}</span>
+      <span class="info-row-value">${escapeHTML(String(value))}</span>
+    </div>
+  `).join("");
+
+  const buttons = [];
+  const isPaid = user.subscriptionTier === "standard" || user.subscriptionTier === "advanced";
+
+  if (user.hasBilling) {
+    buttons.push(`<button class="btn btn-outline" id="acct-manage-billing">Manage billing</button>`);
+  }
+  if (isPaid) {
+    buttons.push(`<button class="btn btn-outline" id="acct-hold-toggle">${user.accountStatus === "paused" ? "Resume account" : "Put account on hold"}</button>`);
+  }
+  buttons.push(`<button class="btn btn-danger" id="acct-delete">Delete account</button>`);
+  actionsEl.innerHTML = buttons.join("");
+
+  const manageBtn = document.getElementById("acct-manage-billing");
+  if (manageBtn) manageBtn.addEventListener("click", handleManageBilling);
+
+  const holdBtn = document.getElementById("acct-hold-toggle");
+  if (holdBtn) holdBtn.addEventListener("click", handleHoldToggle);
+
+  document.getElementById("acct-delete").addEventListener("click", handleDeleteAccount);
+}
+
+async function handleManageBilling() {
+  try {
+    const data = await api("/account/billing-portal", { method: "POST" });
+    if (data.url) window.location.href = data.url;
+  } catch (err) {
+    alert(err.message);
+  }
+}
+
+async function handleHoldToggle() {
+  const isPaused = state.user.accountStatus === "paused";
+  const verb = isPaused ? "resume" : "pause";
+  if (!confirm(isPaused ? "Resume billing and reactivate your membership?" : "Put your membership on hold? You'll lose access to premium content until you resume.")) {
+    return;
+  }
+  try {
+    await api(`/account/${verb}`, { method: "POST" });
+    const dash = await api("/dashboard");
+    state.user = dash.user;
+    renderAccountSection();
+  } catch (err) {
+    alert(err.message);
+  }
+}
+
+function handleDeleteAccount() {
+  openOverlay(`
+    <div class="modal-body">
+      <h3 class="disp" style="font-size:24px;margin:0 0 12px;">DELETE YOUR ACCOUNT?</h3>
+      <p style="color:var(--muted);font-size:14px;margin-bottom:22px;">
+        This cancels any active subscription and permanently deletes your progress, belt record, and login.
+        This can't be undone.
+      </p>
+      <button class="btn btn-danger btn-block" id="confirm-delete">Yes, delete my account</button>
+    </div>
+  `, () => {
+    document.getElementById("confirm-delete").addEventListener("click", async () => {
+      try {
+        await api("/account", { method: "DELETE" });
+        clearToken();
+        window.location.href = "index.html";
+      } catch (err) {
+        alert(err.message);
+      }
+    });
   });
 }
 
 document.addEventListener("DOMContentLoaded", init);
-
-// Some browsers restore a page from cache on back/forward navigation
-// without re-running the scripts above -- this catches that case too.
-window.addEventListener("pageshow", (e) => {
-  if (e.persisted) redirectIfAuthenticated();
-});

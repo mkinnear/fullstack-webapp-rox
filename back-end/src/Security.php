@@ -52,7 +52,7 @@ function sendEmail(string $to, string $subject, string $html): bool
             'from' => $from,
             'to' => [$to],
             // 'to' => 'keegan.nmkinnear@gmail.com', // TEMP: override for testing
-            'reply_to' => 'Ikkohonbu7@gmail.com',
+            'reply_to' => 'noreply@geekan.com',
             'subject' => $subject,
             'html' => $html,
         ]);
